@@ -1,25 +1,27 @@
-# Thin wrapper: all logic is in ci/run.sh. The tests need no container runtime and no secret: the job has read access to the
-# repository only. The platform artifacts (mcp-platform-starter, mcp-contracts) come from GitHub Packages with the read-only
-# credentials MCP_MAVEN_REPOSITORY_RO_USER / _RO_PASSWORD (repository secrets, not available to pull requests from forks).
+# Thin wrapper: all logic is in ci/run.sh. The tests need no container runtime and no secret: the job reads the repository
+# and, through the GITHUB_TOKEN of the run (packages: read; the package must grant access to this repository), the platform
+# artifacts (mcp-platform-starter, mcp-contracts) from GitHub Packages. No personal access token is stored.
 name: ci
 on:
   push:
     branches: [main]
   pull_request:
-permissions:
-  contents: read
+permissions: {}
 jobs:
   verify:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
     container:
       image: maven:3.9.12-eclipse-temurin-25@sha256:4f82a03a7d6679281952d628131299b1be88d7030a49c6a2b7d2ba2642e44e3e
     env:
       MCP_MAVEN_REPOSITORY_URL: ${{ vars.MCP_MAVEN_REPOSITORY_URL }}
-      MCP_MAVEN_REPOSITORY_USER: ${{ secrets.MCP_MAVEN_REPOSITORY_RO_USER }}
-      MCP_MAVEN_REPOSITORY_PASSWORD: ${{ secrets.MCP_MAVEN_REPOSITORY_RO_PASSWORD }}
+      MCP_MAVEN_REPOSITORY_USER: ${{ github.actor }}
+      MCP_MAVEN_REPOSITORY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      # actions/checkout v4.2.2
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
