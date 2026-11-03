@@ -1,0 +1,28 @@
+# Tests and local runs without the platform environment. Under "dev" as the only active profile the starter itself
+# forces plain HTTP, no mTLS, in-memory jti and no JWKS SSL bundle; only values it does not set stay here.
+# Tests override the JWKS, server id, connect URL and the foreign server with TestGateway.serverProperties() and the stub.
+server:
+  address: 127.0.0.1
+  port: ${MCP_PORT:8080}
+
+aiwcorpo:
+  mcp:
+    platform:
+      internal-jwt:
+        # No gateway runs locally, so every call with a JWT ends 503 (JWKS unavailable); without a JWT it is 401.
+        jwks-uri: ${MCP_GATEWAY_JWKS_URI:http://127.0.0.1:18445/.well-known/jwks.json}
+        allow-test-keys: true
+      credential:
+        connect-url: ${MCP_CONNECT_URL:http://localhost:18090/connections?system={system}}
+      policy:
+        allow-test-keys: true
+        main:
+          url: ${MCP_POLICY_URL:http://127.0.0.1:18747/policies/main/latest.json}
+          key-id: test-policies-main-dev
+          public-key-file: ${MCP_POLICY_PUBLIC_KEY_FILE:}
+      manifest:
+        internal-url: https://mcp-jira.internal:8443/mcp
+        accepted-credential-types: user-secret
+    adapter:
+      foreign:
+        url: ${MCP_FOREIGN_URL:http://127.0.0.1:18931}

@@ -1,0 +1,133 @@
+# Base configuration is the production one: mTLS from the gateway, internal JWT, jti store in Redis.
+# Everything that differs per environment comes from environment variables (README, "Konfiguracja").
+# The 'dev' profile (tests, see application-dev.yml) only turns off TLS; the other development relaxations come from
+# TestGateway and the starter refuses them outside 'dev'.
+server:
+  port: ${MCP_PORT:8443}
+  address: ${MCP_BIND:0.0.0.0}
+
+spring:
+  application:
+    name: mcp-server-adapter
+  data:
+    redis:
+      host: ${MCP_REDIS_HOST:localhost}
+      port: ${MCP_REDIS_PORT:6379}
+      username: ${MCP_REDIS_USER:}
+      password: ${MCP_REDIS_PASSWORD:}
+  ai:
+    mcp:
+      server:
+        # Transport (streamable HTTP, SYNC, endpoint /mcp) is defaulted by the starter.
+        name: ${MCP_SERVER_ID:mcp-jira}
+        version: '@project.version@'
+
+aiwcorpo:
+  mcp:
+    platform:
+      # One adapter serves one system, the id is mcp-<system> (C5). The gateway decides in its own configuration which server ids
+      # are served by an adapter; this value must be one of them.
+      server-id: ${MCP_SERVER_ID:mcp-jira}
+      internal-jwt:
+        issuer: ${MCP_GATEWAY_ISSUER:https://mcp-gateway.internal}
+        jwks-uri: ${MCP_GATEWAY_JWKS_URI:}
+      credential:
+        connect-url: ${MCP_CONNECT_URL:}
+      # The signed policy bundle (C7), the same one the gateway evaluates. The adapter does not start without a first bundle,
+      # and state-dir keeps the last accepted revision across restarts so an older signed bundle is refused.
+      policy:
+        main:
+          url: ${MCP_POLICY_URL:}
+          key-id: ${MCP_POLICY_KEY_ID:}
+          public-key-file: ${MCP_POLICY_PUBLIC_KEY_FILE:}
+        state-dir: ${MCP_POLICY_STATE_DIR:}
+      # Description of this server for the registry (C6); the tool entries come from the foreign server.
+      manifest:
+        version: '@project.version@'
+        internal-url: ${MCP_INTERNAL_URL:}
+        accepted-credential-types: ${MCP_ACCEPTED_CREDENTIAL_TYPES:user-secret}
+        output-file: ${MCP_MANIFEST_OUTPUT_FILE:}
+    adapter:
+      foreign:
+        url: ${MCP_FOREIGN_URL:}
+        mcp-path: ${MCP_FOREIGN_PATH:/mcp}
+        # How the credential of the user is presented to the foreign server; {credential} is the value from X-MCP-Credential.
+        authorization-format: ${MCP_FOREIGN_AUTHORIZATION_FORMAT:Token {credential}}
+        # Sent only with the startup tools/list. Some servers refuse every request without an Authorization header although
+        # listing needs no access to the system; this is not a credential of anyone.
+        discovery-authorization: ${MCP_FOREIGN_DISCOVERY_AUTHORIZATION:}
+        startup-wait: ${MCP_FOREIGN_STARTUP_WAIT:90s}
+        ssl-bundle: ${MCP_FOREIGN_SSL_BUNDLE:}
+        allow-plain-http: ${MCP_FOREIGN_ALLOW_PLAIN_HTTP:false}
+      limits:
+        # Text a user writes (a comment, a description, a page body) is longer than an identifier; the limit of any other text argument is
+        # string-max-length (4096). Arguments are matched by name, in every tool.
+        string-max-length-by-property:
+          body: 32768
+          comment: 32768
+          description: 32768
+          content: 32768
+      tools:
+        include: ${MCP_ADAPTER_TOOLS_INCLUDE:}
+        strip-prefix: ${MCP_ADAPTER_STRIP_PREFIX:}
+      registry:
+        # Base URL of the mTLS listener of the gateway (C5). Empty: the manifest is only built and checked, not sent.
+        admin-url: ${MCP_REGISTRY_URL:}
+        ssl-bundle: ${MCP_REGISTRY_SSL_BUNDLE:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: mcp-server-adapter
+
+---
+# TLS outside 'dev'. The adapter ends mTLS itself: the gateway must present a certificate of the internal CA (the starter also
+# checks its CN). adapter-registry is the client identity for the registry: the certificate mcp-adapter-<serverId> and the CA of
+# the gateway.
+spring:
+  config:
+    activate:
+      on-profile: "!dev"
+  ssl:
+    bundle:
+      jks:
+        mcp-server:
+          keystore:
+            location: file:${MCP_TLS_KEYSTORE}
+            password: ${MCP_TLS_STORE_PASSWORD}
+            type: PKCS12
+          truststore:
+            location: file:${MCP_TLS_TRUSTSTORE}
+            password: ${MCP_TLS_STORE_PASSWORD}
+            type: PKCS12
+        mcp-internal-ca:
+          truststore:
+            location: file:${MCP_TLS_TRUSTSTORE}
+            password: ${MCP_TLS_STORE_PASSWORD}
+            type: PKCS12
+        adapter-registry:
+          keystore:
+            location: file:${MCP_REGISTRY_TLS_KEYSTORE}
+            password: ${MCP_TLS_STORE_PASSWORD}
+            type: PKCS12
+          truststore:
+            location: file:${MCP_TLS_TRUSTSTORE}
+            password: ${MCP_TLS_STORE_PASSWORD}
+            type: PKCS12
+server:
+  ssl:
+    bundle: mcp-server
+    client-auth: need
+aiwcorpo:
+  mcp:
+    platform:
+      internal-jwt:
+        jwks-ssl-bundle: mcp-internal-ca

@@ -1,0 +1,410 @@
+[
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": [
+          "jira",
+          "read",
+          "toolset:jira_issues"
+        ]
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "title": "Get Issue"
+    },
+    "description": "Get details of a specific Jira issue.\n\nIncludes Epic links and relationship information. Use the\n``include`` parameter to inline enrichments (remote_links,\ntransitions, watchers, changelog, comments, worklogs) so that\nseparate tool calls are not needed.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "comment_limit": {
+          "default": 10,
+          "description": "Maximum number of comments to include (0 or null for no comments)",
+          "maximum": 100,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "expand": {
+          "default": null,
+          "description": "(Optional) Fields to expand. Examples: 'renderedFields' (for rendered content), 'transitions' (for available status transitions), 'changelog' (for history)",
+          "type": "string"
+        },
+        "fields": {
+          "default": "reporter,priority,labels,versions,issuetype,assignee,description,summary,updated,created,status",
+          "description": "(Optional) Comma-separated list of fields to return (e.g., 'summary,status,customfield_10010'). You may also provide a single field as a string (e.g., 'duedate'). Use '*all' for all fields (including custom fields), or omit for essential fields only.",
+          "type": "string"
+        },
+        "include": {
+          "default": null,
+          "description": "(Optional) Comma-separated sections to inline in the response, avoiding extra tool calls. Supported: all, remote_links, transitions, watchers, changelog, comments, worklogs",
+          "type": "string"
+        },
+        "issue_key": {
+          "description": "Jira issue key (e.g., 'PROJ-123', 'ACV2-642')",
+          "pattern": "^[A-Z][A-Z0-9_]+-\\d+(?:-\\d+)*$",
+          "type": "string"
+        },
+        "properties": {
+          "default": null,
+          "description": "(Optional) A comma-separated list of issue properties to return",
+          "type": "string"
+        },
+        "update_history": {
+          "default": true,
+          "description": "Whether to update the issue view history for the requesting user",
+          "type": "boolean"
+        },
+        "use_display_names": {
+          "default": false,
+          "description": "When true, custom field keys in the output use human-readable display names (e.g. 'Story Points') instead of opaque IDs (e.g. 'customfield_10243'). The 'names' expansion is added automatically. Standard fields are unaffected.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "issue_key"
+      ],
+      "type": "object"
+    },
+    "name": "jira_get_issue",
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "title": "Get Issue"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": [
+          "jira",
+          "read",
+          "toolset:jira_issues"
+        ]
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "title": "Search Issues"
+    },
+    "description": "Search Jira issues using JQL (Jira Query Language).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "expand": {
+          "default": null,
+          "description": "(Optional) fields to expand. Examples: 'renderedFields', 'transitions', 'changelog'",
+          "type": "string"
+        },
+        "fields": {
+          "default": "reporter,priority,labels,versions,issuetype,assignee,description,summary,updated,created,status",
+          "description": "(Optional) Comma-separated fields to return in the results. Use '*all' for all fields, or specify individual fields like 'summary,status,assignee,priority'",
+          "type": "string"
+        },
+        "jql": {
+          "description": "JQL query string (Jira Query Language). Examples:\n- Find Epics: \"issuetype = Epic AND project = PROJ\"\n- Find issues in Epic: \"parent = PROJ-123\"\n- Find by status: \"status = 'In Progress' AND project = PROJ\"\n- Find by assignee: \"assignee = currentUser()\"\n- Find recently updated: \"updated >= -7d AND project = PROJ\"\n- Find by label: \"labels = frontend AND project = PROJ\"\n- Find by priority: \"priority = High AND project = PROJ\"",
+          "type": "string"
+        },
+        "limit": {
+          "default": 10,
+          "description": "Maximum number of results (1-50)",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "page_token": {
+          "default": null,
+          "description": "(Optional) Pagination token from a previous search result. Cloud only \u2014 Server/DC uses start_at for pagination.",
+          "type": "string"
+        },
+        "projects_filter": {
+          "default": null,
+          "description": "(Optional) Comma-separated list of project keys to filter results by. Overrides the environment variable JIRA_PROJECTS_FILTER if provided.",
+          "type": "string"
+        },
+        "start_at": {
+          "default": 0,
+          "description": "Starting index for pagination (0-based)",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "use_display_names": {
+          "default": false,
+          "description": "When true, custom field keys in the output use human-readable display names (e.g. 'Story Points') instead of opaque IDs (e.g. 'customfield_10243'). The 'names' expansion is added automatically. Standard fields are unaffected.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "jql"
+      ],
+      "type": "object"
+    },
+    "name": "jira_search",
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "title": "Search Issues"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": [
+          "jira",
+          "read",
+          "toolset:jira_transitions"
+        ]
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "title": "Get Transitions"
+    },
+    "description": "Get available status transitions for a Jira issue.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "issue_key": {
+          "description": "Jira issue key (e.g., 'PROJ-123', 'ACV2-642')",
+          "pattern": "^[A-Z][A-Z0-9_]+-\\d+(?:-\\d+)*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_key"
+      ],
+      "type": "object"
+    },
+    "name": "jira_get_transitions",
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "title": "Get Transitions"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": [
+          "jira",
+          "toolset:jira_issues",
+          "write"
+        ]
+      }
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "title": "Delete Issue"
+    },
+    "description": "Delete an existing Jira issue.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "issue_key": {
+          "description": "Jira issue key (e.g., 'PROJ-123', 'ACV2-642')",
+          "pattern": "^[A-Z][A-Z0-9_]+-\\d+(?:-\\d+)*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_key"
+      ],
+      "type": "object"
+    },
+    "name": "jira_delete_issue",
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "title": "Delete Issue"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": [
+          "jira",
+          "toolset:jira_comments",
+          "write"
+        ]
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "title": "Add Comment"
+    },
+    "description": "Add a comment to a Jira issue.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "description": "Comment text in Markdown format",
+          "type": "string"
+        },
+        "issue_key": {
+          "description": "Jira issue key (e.g., 'PROJ-123', 'ACV2-642')",
+          "pattern": "^[A-Z][A-Z0-9_]+-\\d+(?:-\\d+)*$",
+          "type": "string"
+        },
+        "public": {
+          "default": null,
+          "description": "(Optional) For JSM/Service Desk issues only. Set to true for customer-visible comment, false for internal agent-only comment. Posted via the ServiceDesk API as a raw string; Jira Cloud renders it server-side and stores ADF (markdown observed to render on Cloud, without the client-side markdown-to-ADF guarantees of the regular comment path). Cannot be combined with visibility. If the issue's project is listed in JIRA_INTERNAL_ONLY_PROJECTS, only public=false is accepted \u2014 public=true or omitting this field is rejected.",
+          "type": "boolean"
+        },
+        "visibility": {
+          "default": null,
+          "description": "(Optional) Comment visibility as JSON string (e.g. '{\"type\":\"group\",\"value\":\"jira-users\"}')",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_key",
+        "body"
+      ],
+      "type": "object"
+    },
+    "name": "jira_add_comment",
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "title": "Add Comment"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": [
+          "jira",
+          "toolset:jira_transitions",
+          "write"
+        ]
+      }
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "title": "Transition Issue"
+    },
+    "description": "Transition a Jira issue to a new status.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "comment": {
+          "default": null,
+          "description": "(Optional) Comment to add during the transition in Markdown format. This will be visible in the issue history. Rejected for projects listed in JIRA_INTERNAL_ONLY_PROJECTS (a transition comment may be customer-visible on JSM and cannot be forced internal): transition without a comment, then post an internal note with jira_add_comment(public=false).",
+          "type": "string"
+        },
+        "fields": {
+          "default": null,
+          "description": "(Optional) JSON string of fields to update during the transition. Some transitions require specific fields to be set (e.g., resolution). Example: '{\"resolution\": {\"name\": \"Fixed\"}}'",
+          "type": "string"
+        },
+        "issue_key": {
+          "description": "Jira issue key (e.g., 'PROJ-123', 'ACV2-642')",
+          "pattern": "^[A-Z][A-Z0-9_]+-\\d+(?:-\\d+)*$",
+          "type": "string"
+        },
+        "transition_id": {
+          "description": "ID of the transition to perform. Use the jira_get_transitions tool first to get the available transition IDs for the issue. Example values: '11', '21', '31'",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_key",
+        "transition_id"
+      ],
+      "type": "object"
+    },
+    "name": "jira_transition_issue",
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "title": "Transition Issue"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": [
+          "jira",
+          "read",
+          "toolset:jira_projects"
+        ]
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "title": "Get All Projects"
+    },
+    "description": "Get all Jira projects accessible to the current user.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "include_archived": {
+          "default": false,
+          "description": "Whether to include archived projects in the results",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "name": "jira_get_all_projects",
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "title": "Get All Projects"
+  }
+]
