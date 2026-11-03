@@ -103,7 +103,7 @@ public final class ForeignCatalog {
             JsonNode annotations = tool.get("annotations");
             String title = titleOf(tool, annotations, name);
             String description = descriptionOf(tool, title, properties.limits().descriptionMaxLength());
-            tools.add(new ForeignTool(name, foreignName, title, description, schema.schema().get(), LocalRisk.of(annotations)));
+            tools.add(new ForeignTool(name, foreignName, title, description, schema.schema().get(), LocalRisk.of(annotations, name)));
         }
         return tools;
     }

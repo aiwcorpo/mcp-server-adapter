@@ -137,8 +137,8 @@ verify() {
   local ran skipped
   ran="$(tests_ran)"
   skipped="$(tests_skipped)"
-  if [[ "${ran:-0}" -lt "${CI_MIN_TESTS:-60}" ]]; then
-    echo "ci/run.sh: $ran test cases ran; at least ${CI_MIN_TESTS:-60} are required" >&2
+  if [[ "${ran:-0}" -lt "${CI_MIN_TESTS:-90}" ]]; then
+    echo "ci/run.sh: $ran test cases ran; at least ${CI_MIN_TESTS:-90} are required" >&2
     return 1
   fi
   if [[ "$skipped" -ne 0 ]]; then

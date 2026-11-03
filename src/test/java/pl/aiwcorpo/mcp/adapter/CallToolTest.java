@@ -2,11 +2,17 @@ package pl.aiwcorpo.mcp.adapter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import pl.aiwcorpo.mcp.adapter.StubForeignServer.Reply;
 import tools.jackson.databind.JsonNode;
 
@@ -173,5 +179,48 @@ class CallToolTest extends ServerTestSupport {
             assertError(call(reader, "add_comment", Map.of("issue_key", "ABC-1", "body", "hello")), "access_denied");
         }
         assertThat(FOREIGN.calls()).extracting(StubForeignServer.Call::tool).containsExactly("jira_get_issue");
+    }
+
+    @Autowired
+    MeterRegistry meters;
+
+    @Test
+    void aForeignServerThatDoesNotAcceptTheHeaderAsksTheUserToReconnectTheAccount() {
+        FOREIGN.onCall(call -> Reply.status(401));
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            McpSchema.CallToolResult result = call(client, "get_issue", Map.of("issue_key", "ABC-1"));
+
+            assertError(result, "credential_required");
+            assertThat(text(result)).contains("\"system\":\"jira\"").doesNotContain(PAT_VALUE);
+        }
+    }
+
+    @Test
+    void theTechnicalReasonIsInTheLogAndTheMetricNeverTheWordsOfTheForeignServerOrTheCredential() {
+        Logger root = (Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        root.addAppender(appender);
+        double before = counter("result_error");
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            FOREIGN.onCall(call -> Reply.errorResult("Issue ABC-404 at https://jira.corp.test failed for " + PAT_VALUE));
+            call(client, "get_issue", Map.of("issue_key", "ABC-404"));
+            FOREIGN.onCall(call -> Reply.status(500));
+            call(client, "get_issue", Map.of("issue_key", "ABC-1"));
+        } finally {
+            root.detachAppender(appender);
+        }
+
+        List<String> lines = appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
+        assertThat(lines).anyMatch(line -> line.contains("event=foreign_call_failed") && line.contains("reason=result_error"));
+        assertThat(lines).anyMatch(line -> line.contains("event=foreign_call_failed") && line.contains("reason=http_5xx"));
+        assertThat(String.join("\n", lines)).doesNotContain(PAT_VALUE, "jira.corp.test", "ABC-404 at");
+        assertThat(counter("result_error")).isEqualTo(before + 1);
+        assertThat(counter("http_5xx")).isGreaterThanOrEqualTo(1);
+    }
+
+    private double counter(String reason) {
+        var counter = meters.find("mcp_adapter_foreign_failures_total").tag("reason", reason).counter();
+        return counter == null ? 0 : counter.count();
     }
 }

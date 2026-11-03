@@ -15,15 +15,32 @@ services:
       ALLOW_GLOBAL_CRED_FALLBACK: "false"
       TOOLSETS: all
       ENABLED_TOOLS: jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions,jira_add_comment,jira_transition_issue
-    # No published port and no membership of the shared "servers" network: only the adapter reaches it, on "adapter-foreign".
-    # ws-01: add here the network on which jira-mock has the alias jira.internal (and only that one); mcp-atlassian talks to Jira from it.
+    # Foreign code, the least trusted container of the stack. Checked on the pinned image: it runs as uid 1000 (user "app") and works with
+    # a read-only root file system, no capabilities and these limits.
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    pids_limit: 200
+    # No published port. Two networks and no others: "adapter-foreign" (with the adapter) and "jira-foreign" (with the Jira mock). Not
+    # "servers" and not "core": from there it would see Redis, the policy server, the other servers and the admin API of the mock.
     networks:
       adapter-foreign: {}
+      jira-foreign: {}
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 2)"]
       interval: 5s
       timeout: 3s
       retries: 20
+
+  # Extends the existing service of mcp-platform-dev: the mock answers to jira.internal on the private network of the foreign server
+  # too. The alias there is the same name as on "servers" and "core", which are left as they are.
+  jira-mock:
+    networks:
+      jira-foreign:
+        aliases: [jira.internal]
 
   mcp-jira-adapter:
     image: ${ADAPTER_IMAGE}
@@ -63,6 +80,8 @@ services:
       MCP_DEVSTACK_ACKNOWLEDGED: "true"
       AIWCORPO_MCP_PLATFORM_DEVSTACK_ACKNOWLEDGED: "true"
       AIWCORPO_MCP_PLATFORM_POLICY_ALLOW_TEST_KEYS: "true"
+    # The image runs as uid 10001; the state volume must be writable by it (the native servers use another uid, so the init step of the
+    # stack needs its own line for this volume).
     volumes:
       - mcp-jira-state:/app/state
       - ${POLICY_KEYS_DIR}/${POLICY_KEY_MAIN_ID}.public.pem:/keys/${POLICY_KEY_MAIN_ID}.public.pem:ro
@@ -83,6 +102,9 @@ services:
       redis: {condition: service_healthy}
 
 networks:
-  # Internal: no route out, and no container but the adapter and mcp-atlassian on it.
+  # Internal (no route out of the stack): the adapter and the foreign server, nothing else.
   adapter-foreign:
+    internal: true
+  # Internal: the foreign server and the Jira mock, nothing else.
+  jira-foreign:
     internal: true

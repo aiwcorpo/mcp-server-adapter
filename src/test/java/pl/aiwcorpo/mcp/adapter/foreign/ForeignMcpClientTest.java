@@ -151,8 +151,78 @@ class ForeignMcpClientTest {
     @Test
     void aServerThatRefusesTheHeaderlessDiscoveryIsReportedAsDenied() {
         assertThatThrownBy(() -> client().listTools(null)).isInstanceOfSatisfying(ForeignCallException.class, ex -> {
-            assertThat(ex.kind()).isEqualTo(ForeignCallException.Kind.DENIED);
+            assertThat(ex.kind()).isEqualTo(ForeignCallException.Kind.UNAUTHORIZED);
+            assertThat(ex.reason()).isEqualTo(ForeignCallException.Reason.HTTP_401);
             assertThat(ex.httpStatus()).isEqualTo(401);
         });
+    }
+
+    private ForeignMcpClient clientWithTimeout(Duration timeout) {
+        AdapterProperties.Foreign foreign = new AdapterProperties.Foreign(URI.create(stub.url()), "/mcp", "Token {credential}", "",
+                Duration.ofSeconds(2), timeout, Duration.ofSeconds(5), DataSize.ofMegabytes(1), true, null);
+        return new ForeignMcpClient(ForeignMcpClient.httpClient(foreign, null), foreign);
+    }
+
+    @Test
+    void anEventStreamThatNeverAnswersEndsAtTheDeadlineOfTheExchange() {
+        stub.stream(StubForeignServer.Stream.SILENT_FOR_EVER);
+        long start = System.nanoTime();
+
+        assertThatThrownBy(() -> clientWithTimeout(Duration.ofSeconds(1)).callTool("jira_get_issue", args(), "Token a", "r"))
+                .isInstanceOfSatisfying(ForeignCallException.class, ex -> {
+                    assertThat(ex.kind()).isEqualTo(ForeignCallException.Kind.UNAVAILABLE);
+                    assertThat(ex.reason()).isEqualTo(ForeignCallException.Reason.TIMEOUT);
+                });
+
+        assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(4));
+    }
+
+    @Test
+    void aStreamThatStaysOpenAfterTheResponseCostsNothing() {
+        stub.stream(StubForeignServer.Stream.OPEN_AFTER_RESPONSE).onCall(call -> Reply.text("done"));
+        long start = System.nanoTime();
+
+        JsonNode result = clientWithTimeout(Duration.ofSeconds(5)).callTool("jira_get_issue", args(), "Token a", "r");
+
+        assertThat(result.at("/content/0/text").asString()).isEqualTo("done");
+        assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(3));
+    }
+
+    @Test
+    void aStreamThatTrickleBytesForeverIsCutAtTheDeadlineToo() {
+        stub.stream(StubForeignServer.Stream.TRICKLE_FOR_EVER);
+
+        assertThatThrownBy(() -> clientWithTimeout(Duration.ofSeconds(1)).callTool("jira_get_issue", args(), "Token a", "r"))
+                .isInstanceOfSatisfying(ForeignCallException.class,
+                        ex -> assertThat(ex.reason()).isEqualTo(ForeignCallException.Reason.TIMEOUT));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"id\r\nX-Injected: 1", "has space", ""})
+    void aSessionIdThatCannotBeSentBackIsRefused(String sessionId) {
+        stub.sessionId(sessionId.isEmpty() ? "x".repeat(300) : sessionId);
+
+        assertThatThrownBy(() -> client().callTool("jira_get_issue", args(), "Token a", "r"))
+                .isInstanceOfSatisfying(ForeignCallException.class,
+                        ex -> assertThat(ex.kind()).isEqualTo(ForeignCallException.Kind.UNAVAILABLE));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"//other-host/mcp", "http://other-host/mcp", "mcp", "/a/../b", "/mcp?x=1", "/mcp#f", "/ mcp"})
+    void aPathThatLeavesTheForeignServerIsRefused(String path) {
+        AdapterProperties.Foreign foreign = new AdapterProperties.Foreign(URI.create("https://mcp-atlassian.internal:8443"), path,
+                "Token {credential}", "", Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1), DataSize.ofMegabytes(1),
+                false, null);
+
+        assertThatThrownBy(() -> ForeignMcpClient.endpoint(foreign)).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void anOrdinaryPathStaysOnTheBaseAddress() {
+        AdapterProperties.Foreign foreign = new AdapterProperties.Foreign(URI.create("https://mcp-atlassian.internal:8443"), "/api/mcp",
+                "Token {credential}", "", Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1), DataSize.ofMegabytes(1),
+                false, null);
+
+        assertThat(ForeignMcpClient.endpoint(foreign)).hasToString("https://mcp-atlassian.internal:8443/api/mcp");
     }
 }

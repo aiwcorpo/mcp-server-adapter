@@ -10,6 +10,7 @@ import pl.aiwcorpo.mcp.platform.guard.RiskClassifiedTool;
 import pl.aiwcorpo.mcp.platform.guard.RiskLevel;
 import pl.aiwcorpo.mcp.platform.security.BackendCredential;
 import pl.aiwcorpo.mcp.platform.security.CredentialContext;
+import pl.aiwcorpo.mcp.platform.security.CredentialRequiredException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -28,15 +29,17 @@ final class ForeignToolCallback implements ToolCallback, RiskClassifiedTool {
     private final String system;
     private final String authorizationFormat;
     private final ForeignResult results;
+    private final ForeignFailures failures;
     private final ToolDefinition definition;
 
     ForeignToolCallback(ForeignTool tool, ForeignMcpClient client, String system, String authorizationFormat,
-                        ForeignResult results) {
+                        ForeignResult results, ForeignFailures failures) {
         this.tool = tool;
         this.client = client;
         this.system = system;
         this.authorizationFormat = authorizationFormat;
         this.results = results;
+        this.failures = failures;
         this.definition = ToolDefinition.builder().name(tool.name()).description(tool.description())
                 .inputSchema(tool.inputSchema().toString()).build();
     }
@@ -50,15 +53,24 @@ final class ForeignToolCallback implements ToolCallback, RiskClassifiedTool {
     public String call(String toolInput) {
         BackendCredential credential = CredentialContext.require(system);
         String requestId = CallerContext.current().map(CallerContext::requestId).orElse(null);
-        JsonNode result = client.callTool(tool.foreignName(), arguments(toolInput), authorization(credential), requestId);
-        return results.render(result);
+        try {
+            JsonNode result = client.callTool(tool.foreignName(), arguments(toolInput), authorization(credential), requestId);
+            return results.render(result);
+        } catch (ForeignCallException ex) {
+            failures.record(tool.name(), requestId, ex);
+            if (ex.kind() == ForeignCallException.Kind.UNAUTHORIZED) {
+                // The foreign server refused the header itself: the user's credential is missing, expired or in a form it does not take.
+                throw new CredentialRequiredException(system);
+            }
+            throw ex;
+        }
     }
 
     /** The header value for the foreign server; a value with a line break would split the header, so it is refused before it is built. */
     private String authorization(BackendCredential credential) {
         String value = credential.value();
         if (value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0) {
-            throw new ForeignCallException(ForeignCallException.Kind.DENIED, "credential with a line break");
+            throw new ForeignCallException(ForeignCallException.Kind.DENIED, ForeignCallException.Reason.CREDENTIAL_REJECTED);
         }
         return authorizationFormat.replace("{credential}", value);
     }

@@ -6,7 +6,7 @@ pipeline {
   agent none
   stages {
     stage('verify') {
-      agent { docker { image 'maven:3.9.12-eclipse-temurin-25' } }
+      agent { docker { image 'maven:3.9.12-eclipse-temurin-25@sha256:4f82a03a7d6679281952d628131299b1be88d7030a49c6a2b7d2ba2642e44e3e' } }
       steps {
         withCredentials([usernamePassword(credentialsId: 'mcp-maven-registry-readonly',
             usernameVariable: 'MCP_MAVEN_REPOSITORY_USER', passwordVariable: 'MCP_MAVEN_REPOSITORY_PASSWORD')]) {
@@ -20,7 +20,7 @@ pipeline {
       when { branch 'main' }
       agent {
         docker {
-          image 'maven:3.9.12-eclipse-temurin-25'
+          image 'maven:3.9.12-eclipse-temurin-25@sha256:4f82a03a7d6679281952d628131299b1be88d7030a49c6a2b7d2ba2642e44e3e'
           label 'docker-socket'
           args "-v /var/run/docker.sock:/var/run/docker.sock --group-add ${env.DOCKER_GID ?: '999'}"
         }

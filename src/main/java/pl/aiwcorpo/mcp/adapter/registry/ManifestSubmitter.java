@@ -10,6 +10,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -39,6 +40,7 @@ public final class ManifestSubmitter {
     private final HttpClient http;
     private final AtomicBoolean submitted = new AtomicBoolean();
     private final AtomicBoolean started = new AtomicBoolean();
+    private final AtomicInteger lastStatus = new AtomicInteger();
 
     public ManifestSubmitter(AdapterProperties.Registry settings, String serverId, ManifestCheck manifest, HttpClient http,
                              MeterRegistry meters) {
@@ -48,6 +50,8 @@ public final class ManifestSubmitter {
         this.http = http;
         if (meters != null) {
             meters.gauge("mcp_adapter_manifest_submitted", submitted, flag -> flag.get() ? 1 : 0);
+            // 0 until the first answer; a status other than 200 that stays is a configuration an administrator has to fix (403, 422).
+            meters.gauge("mcp_adapter_manifest_last_status", lastStatus, AtomicInteger::get);
         }
     }
 
@@ -93,6 +97,7 @@ public final class ManifestSubmitter {
                         StandardCharsets.UTF_8);
             }
             int status = response.statusCode();
+            lastStatus.set(status);
             if (status == 200) {
                 submitted.set(true);
                 LOG.info("event=manifest_submitted serverId={} status=200", serverId);
@@ -102,6 +107,7 @@ public final class ManifestSubmitter {
             LOG.error("event=manifest_rejected serverId={} status={} reason={} action=retry", serverId, status,
                     reason.find() ? reason.group(1) : "-");
         } catch (IOException ex) {
+            lastStatus.set(-1);
             LOG.warn("event=manifest_submit_failed serverId={} exception={} action=retry", serverId, ex.getClass().getSimpleName());
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();

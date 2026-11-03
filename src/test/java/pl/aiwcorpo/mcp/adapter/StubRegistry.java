@@ -59,8 +59,9 @@ public final class StubRegistry implements AutoCloseable {
             }
             int position = index.getAndIncrement();
             int status = position < statuses.size() ? statuses.get(position) : 200;
-            byte[] reply = (status == 200 ? "{}" : "{\"error\":\"manifest_rejected\",\"reason\":\"adapter_mode_mismatch\",\"message\":\"secret detail\"}")
-                    .getBytes(StandardCharsets.UTF_8);
+            String reason = status == 422 ? "adapter_mode_mismatch" : status == 403 ? "client_certificate_rejected" : null;
+            byte[] reply = (status == 200 ? "{}" : "{\"error\":\"rejected\"" + (reason == null ? "" : ",\"reason\":\"" + reason + "\"")
+                    + ",\"message\":\"secret detail\"}").getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(status, reply.length);
             exchange.getResponseBody().write(reply);

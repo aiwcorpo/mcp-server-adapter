@@ -13,7 +13,6 @@ target/
 *.key
 *.crt
 *.env
-!deploy/*.env.template
 # Logs and local caches
 *.log
 .m2/

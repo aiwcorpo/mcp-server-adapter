@@ -22,7 +22,7 @@ final class ForeignErrors implements ToolErrorMapping {
             return Optional.empty();
         }
         return Optional.of(switch (foreign.kind()) {
-            case DENIED -> new SafeError(ToolErrorCode.NOT_FOUND_OR_DENIED.code(), ToolErrorCode.NOT_FOUND_OR_DENIED_MESSAGE);
+            case DENIED, UNAUTHORIZED -> new SafeError(ToolErrorCode.NOT_FOUND_OR_DENIED.code(), ToolErrorCode.NOT_FOUND_OR_DENIED_MESSAGE);
             case UNAVAILABLE -> new SafeError(ToolErrorCode.UPSTREAM_UNAVAILABLE.code(), UNAVAILABLE_TEXT);
             case OVERSIZE -> new SafeError(ToolErrorCode.INTERNAL_ERROR.code(), OVERSIZE_TEXT);
         });

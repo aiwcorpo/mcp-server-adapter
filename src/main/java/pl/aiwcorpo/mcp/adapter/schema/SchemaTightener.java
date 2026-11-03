@@ -8,6 +8,8 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import pl.aiwcorpo.mcp.adapter.config.AdapterProperties;
+import pl.aiwcorpo.mcp.platform.text.TextHygiene;
+import pl.aiwcorpo.mcp.platform.text.UntrustedText;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -31,7 +33,11 @@ public final class SchemaTightener {
     private static final Set<String> TYPES = Set.of("string", "integer", "number", "boolean", "array", "object");
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
+    private static final Pattern PROPERTY_NAME = Pattern.compile("^[A-Za-z0-9_.-]{1,64}$");
+    private static final int MAX_ENUM_VALUES = 500;
+
     private final AdapterProperties.Limits limits;
+    private int nodes;
 
     public SchemaTightener(AdapterProperties.Limits limits) {
         this.limits = limits;
@@ -41,8 +47,9 @@ public final class SchemaTightener {
     public record Result(Optional<ObjectNode> schema, List<String> problems) {
     }
 
-    public Result tighten(JsonNode foreign) {
+    public synchronized Result tighten(JsonNode foreign) {
         List<String> problems = new ArrayList<>();
+        nodes = 0;
         if (foreign == null || !foreign.isObject()) {
             return new Result(Optional.empty(), List.of("the arguments: no object schema"));
         }
@@ -59,6 +66,10 @@ public final class SchemaTightener {
 
     private ObjectNode visit(JsonNode schema, JsonNode root, String path, int depth, int refDepth, List<String> problems) {
         String where = path.isEmpty() ? "the arguments" : path;
+        if (++nodes > limits.schemaMaxNodes()) {
+            problems.add(where + ": the written-out schema has more than " + limits.schemaMaxNodes() + " nodes");
+            return null;
+        }
         if (depth > MAX_DEPTH) {
             problems.add(where + ": nested deeper than " + MAX_DEPTH + " levels");
             return null;
@@ -77,11 +88,12 @@ public final class SchemaTightener {
         }
         ObjectNode out = JSON.createObjectNode();
         out.put("type", type);
-        copyText(flat, out, "description");
-        copyFixed(flat, out);
+        if (!copyDescription(flat, out, where, problems) || !copyFixed(flat, out, where, problems)) {
+            return null;
+        }
         return switch (type) {
             case "string" -> string(flat, out, path);
-            case "integer", "number" -> number(flat, out, type);
+            case "integer", "number" -> number(flat, out, type, where, problems);
             case "array" -> array(flat, out, root, path, depth, refDepth, problems);
             case "object" -> object(flat, out, root, path, depth, refDepth, problems);
             default -> out;
@@ -197,21 +209,61 @@ public final class SchemaTightener {
         return type;
     }
 
-    private void copyText(ObjectNode from, ObjectNode to, String key) {
-        String text = from.path(key).asString(null);
-        if (text != null && !text.isBlank()) {
-            to.put(key, text);
+    /**
+     * The description of an argument reaches the model like the description of the tool. Forbidden characters (control, bidi, tag and
+     * zero-width characters) refuse the tool, not replaced: an administrator approves what they see, and a replaced run would hide that
+     * something was there. Too long a text is cut.
+     */
+    private boolean copyDescription(ObjectNode from, ObjectNode to, String where, List<String> problems) {
+        String text = from.path("description").asString(null);
+        if (text == null || text.isBlank()) {
+            return true;
         }
+        if (TextHygiene.firstProblem(text, false) != null) {
+            problems.add(where + ": the description contains control or invisible characters");
+            return false;
+        }
+        String cut = UntrustedText.cut(text, limits.propertyDescriptionMaxLength()).strip();
+        if (!cut.isEmpty()) {
+            to.put("description", cut);
+        }
+        return true;
     }
 
-    /** {@code enum} and {@code const} fix the value, so they need no further limit; both are kept as the foreign schema has them. */
-    private static void copyFixed(ObjectNode from, ObjectNode to) {
+    /** {@code enum} and {@code const} fix the value, so they need no further limit; their texts are checked like the descriptions. */
+    private boolean copyFixed(ObjectNode from, ObjectNode to, String where, List<String> problems) {
         if (from.path("enum").isArray() && !from.get("enum").isEmpty()) {
+            if (from.get("enum").size() > MAX_ENUM_VALUES) {
+                problems.add(where + ": an enum of more than " + MAX_ENUM_VALUES + " values");
+                return false;
+            }
+            for (JsonNode value : from.get("enum")) {
+                if (!fixedValueOk(value, where, problems)) {
+                    return false;
+                }
+            }
             to.set("enum", from.get("enum"));
         }
         if (from.has("const")) {
+            if (!fixedValueOk(from.get("const"), where, problems)) {
+                return false;
+            }
             to.set("const", from.get("const"));
         }
+        return true;
+    }
+
+    private boolean fixedValueOk(JsonNode value, String where, List<String> problems) {
+        if (value.isString() && (value.asString().length() > limits.enumValueMaxLength()
+                || TextHygiene.firstProblem(value.asString(), false) != null)) {
+            problems.add(where + ": a fixed value is too long or contains control or invisible characters");
+            return false;
+        }
+        boolean scalar = value.isString() || value.isNumber() || value.isBoolean() || value.isNull();
+        if (!scalar) {
+            problems.add(where + ": a fixed value that is not a scalar");
+        }
+        return scalar;
     }
 
     private ObjectNode string(ObjectNode flat, ObjectNode out, String path) {
@@ -245,7 +297,7 @@ public final class SchemaTightener {
         return last.endsWith("[]") ? last.substring(0, last.length() - 2) : last;
     }
 
-    private ObjectNode number(ObjectNode flat, ObjectNode out, String type) {
+    private ObjectNode number(ObjectNode flat, ObjectNode out, String type, String where, List<String> problems) {
         if (out.has("enum") || out.has("const")) {
             return out;
         }
@@ -253,8 +305,8 @@ public final class SchemaTightener {
         double minimum = bound(flat.get("minimum"), limits.numberMinimum(), true);
         double maximum = bound(flat.get("maximum"), limits.numberMaximum(), false);
         if (minimum > maximum) {
-            minimum = limits.numberMinimum();
-            maximum = limits.numberMaximum();
+            problems.add(where + ": the declared range lies outside the configured one, or is empty");
+            return null;
         }
         if (integer) {
             out.put("minimum", (long) minimum);
@@ -307,7 +359,7 @@ public final class SchemaTightener {
         JsonNode additional = flat.get("additionalProperties");
         JsonNode properties = flat.path("properties");
         if (!properties.isObject() || properties.isEmpty()) {
-            if (path.isEmpty()) {
+            if (path.isEmpty() && (additional == null || (additional.isBoolean() && !additional.asBoolean()))) {
                 out.putObject("properties");
                 out.put("additionalProperties", false);
                 return out;
@@ -322,6 +374,11 @@ public final class SchemaTightener {
         ObjectNode declared = out.putObject("properties");
         boolean ok = true;
         for (String name : properties.propertyNames()) {
+            if (!PROPERTY_NAME.matcher(name).matches()) {
+                problems.add(describe(path) + ": a property name outside [A-Za-z0-9_.-]{1,64}");
+                ok = false;
+                continue;
+            }
             ObjectNode property = visit(properties.get(name), root, path.isEmpty() ? name : path + "." + name, depth + 1, refDepth, problems);
             if (property == null) {
                 ok = false;

@@ -12,7 +12,7 @@ in `~/.m2` or in the registry named by `MCP_MAVEN_REPOSITORY_URL` (see the READM
 ci/run.sh verify     # text checks, then clean verify; the same script runs in CI
 ```
 
-`ci/run.sh verify` must pass before a merge: it fails when fewer than 60 tests ran or when one was skipped. The test against the real
+`ci/run.sh verify` must pass before a merge: it fails when fewer than 90 tests ran or when one was skipped. The test against the real
 `mcp-atlassian` image (`-Preal-image`) is run by hand when the foreign client or the schema bounding changes.
 
 ## Commits

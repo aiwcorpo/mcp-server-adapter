@@ -1,20 +1,31 @@
 package pl.aiwcorpo.mcp.adapter.foreign;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
+import java.util.Locale;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 import pl.aiwcorpo.mcp.adapter.config.AdapterProperties;
 import pl.aiwcorpo.mcp.adapter.foreign.ForeignCallException.Kind;
+import pl.aiwcorpo.mcp.adapter.foreign.ForeignCallException.Reason;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -26,14 +37,24 @@ import tools.jackson.databind.node.ObjectNode;
  * kept with it) is ever shared between two users. Redirects are not followed, because a redirect would carry the header to
  * another address.
  *
- * <p>The server answers with JSON or with an event stream; both are read, up to {@code max-response-size}. Nothing the server
- * says is logged or copied into an exception.
+ * <p>The server answers with JSON or with an event stream. Each exchange has one deadline ({@code request-timeout}) that covers the
+ * headers and the body: the request timeout of the HTTP client ends at the headers, so a server that opens an event stream and
+ * keeps it open, or trickles bytes, would otherwise hold the thread for ever. A stream is read only up to the response to the request
+ * and then closed. Nothing the server says is logged or copied into an exception.
  */
 public class ForeignMcpClient {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String PROTOCOL_VERSION = "2025-06-18";
     private static final int MAX_PAGES = 20;
+    /** What the server puts in these headers is sent back to it, so only visible ASCII of a sane length is accepted. */
+    private static final Pattern SESSION_ID = Pattern.compile("^[\\x21-\\x7E]{1,256}$");
+    private static final Pattern PROTOCOL = Pattern.compile("^[0-9A-Za-z.-]{1,32}$");
+    private static final ScheduledExecutorService DEADLINES = Executors.newSingleThreadScheduledExecutor(task -> {
+        Thread thread = new Thread(task, "foreign-deadline");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private final HttpClient http;
     private final URI endpoint;
@@ -43,9 +64,27 @@ public class ForeignMcpClient {
 
     public ForeignMcpClient(HttpClient http, AdapterProperties.Foreign foreign) {
         this.http = http;
-        this.endpoint = foreign.url().resolve(foreign.mcpPath());
+        this.endpoint = endpoint(foreign);
         this.requestTimeout = foreign.requestTimeout();
         this.maxResponseBytes = foreign.maxResponseSize().toBytes();
+    }
+
+    /**
+     * The address every request goes to. The path may not change scheme, host or port of the base address: the credential of the user is
+     * sent there, and {@code //other-host/mcp} or {@code http://other-host/mcp} would send it elsewhere.
+     */
+    public static URI endpoint(AdapterProperties.Foreign foreign) {
+        String path = foreign.mcpPath();
+        if (path == null || !path.matches("^/(?!/)[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$") || path.contains("..")) {
+            throw new IllegalStateException("aiwcorpo.mcp.adapter.foreign.mcp-path must be an absolute path that starts with a single /");
+        }
+        URI base = foreign.url();
+        URI resolved = base.resolve(path);
+        if (!base.getScheme().equalsIgnoreCase(resolved.getScheme()) || !base.getHost().equalsIgnoreCase(resolved.getHost())
+                || base.getPort() != resolved.getPort() || resolved.getUserInfo() != null) {
+            throw new IllegalStateException("aiwcorpo.mcp.adapter.foreign.mcp-path leaves the address of the foreign server");
+        }
+        return resolved;
     }
 
     /** Builds the HTTP client: no redirects, HTTP/1.1 (the foreign servers are ordinary ASGI or servlet applications), connect timeout. */
@@ -74,7 +113,7 @@ public class ForeignMcpClient {
                 JsonNode result = session.request("tools/list", params);
                 JsonNode list = result.path("tools");
                 if (!list.isArray()) {
-                    throw new ForeignCallException(Kind.UNAVAILABLE, "tools/list without a tools array");
+                    throw new ForeignCallException(Kind.UNAVAILABLE, Reason.MALFORMED);
                 }
                 list.forEach(tool -> {
                     if (tool.isObject()) {
@@ -86,7 +125,7 @@ public class ForeignMcpClient {
                     return tools;
                 }
             }
-            throw new ForeignCallException(Kind.UNAVAILABLE, "tools/list has more than " + MAX_PAGES + " pages");
+            throw new ForeignCallException(Kind.UNAVAILABLE, Reason.MALFORMED);
         }
     }
 
@@ -95,7 +134,8 @@ public class ForeignMcpClient {
      *
      * @param requestId the platform's request id, passed as {@code X-Request-Id} so a line in the foreign server's log can be tied to the audit event
      * @return the {@code result} of the call
-     * @throws ForeignCallException {@code DENIED} when the server answers with an error or an error result, {@code UNAVAILABLE} when it cannot be reached or answers nonsense
+     * @throws ForeignCallException {@code DENIED} when the server answers with an error or an error result, {@code UNAUTHORIZED} when it does not
+     *         accept the credential at the transport, {@code UNAVAILABLE} when it cannot be reached or answers nonsense
      */
     public JsonNode callTool(String name, JsonNode arguments, String authorization, String requestId) {
         try (Session session = open(authorization, requestId)) {
@@ -104,7 +144,7 @@ public class ForeignMcpClient {
             params.set("arguments", arguments);
             JsonNode result = session.request("tools/call", params);
             if (result.path("isError").asBoolean(false)) {
-                throw new ForeignCallException(Kind.DENIED, "the tool reported an error");
+                throw new ForeignCallException(Kind.DENIED, Reason.RESULT_ERROR);
             }
             return result;
         }
@@ -120,7 +160,11 @@ public class ForeignMcpClient {
             info.put("name", "mcp-server-adapter");
             info.put("version", "1");
             JsonNode result = session.request("initialize", params);
-            session.protocolVersion = result.path("protocolVersion").asString(PROTOCOL_VERSION);
+            String version = result.path("protocolVersion").asString(PROTOCOL_VERSION);
+            if (!PROTOCOL.matcher(version).matches()) {
+                throw new ForeignCallException(Kind.UNAVAILABLE, Reason.MALFORMED);
+            }
+            session.protocolVersion = version;
             session.notifyInitialized();
             return session;
         } catch (RuntimeException ex) {
@@ -148,17 +192,20 @@ public class ForeignMcpClient {
             message.put("id", id);
             message.put("method", method);
             message.set("params", params);
-            Exchange exchange = send(message.toString());
-            if (sessionId == null && "initialize".equals(method)) {
+            Exchange exchange = send(message.toString(), id);
+            if (sessionId == null && "initialize".equals(method) && exchange.sessionId != null) {
+                if (!SESSION_ID.matcher(exchange.sessionId).matches()) {
+                    throw new ForeignCallException(Kind.UNAVAILABLE, Reason.MALFORMED);
+                }
                 sessionId = exchange.sessionId;
             }
-            JsonNode response = answer(exchange, id);
+            JsonNode response = exchange.response;
             if (response.has("error")) {
-                throw new ForeignCallException(Kind.DENIED, "JSON-RPC error " + response.path("error").path("code").asInt(0));
+                throw new ForeignCallException(Kind.DENIED, Reason.JSONRPC_ERROR);
             }
             JsonNode result = response.get("result");
             if (result == null || !result.isObject()) {
-                throw new ForeignCallException(Kind.UNAVAILABLE, "response without a result");
+                throw new ForeignCallException(Kind.UNAVAILABLE, Reason.MALFORMED);
             }
             return result;
         }
@@ -167,16 +214,16 @@ public class ForeignMcpClient {
             ObjectNode message = JSON.createObjectNode();
             message.put("jsonrpc", "2.0");
             message.put("method", "notifications/initialized");
-            send(message.toString());
+            send(message.toString(), -1);
         }
 
-        private Exchange send(String body) {
+        private Exchange send(String body, int id) {
             HttpRequest.Builder request = HttpRequest.newBuilder(endpoint).timeout(requestTimeout)
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json, text/event-stream")
                     .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
             decorate(request);
-            return execute(request.build());
+            return execute(request.build(), id);
         }
 
         private void decorate(HttpRequest.Builder request) {
@@ -211,95 +258,115 @@ public class ForeignMcpClient {
         }
     }
 
-    private record Exchange(int status, String contentType, String sessionId, String body) {
+    private record Exchange(String sessionId, JsonNode response) {
     }
 
-    private Exchange execute(HttpRequest request) {
+    /** Sends the request and reads the answer within one deadline. {@code id} below zero is a notification: no body is expected. */
+    private Exchange execute(HttpRequest request, int id) {
+        long deadline = System.nanoTime() + requestTimeout.toNanos();
         try {
             HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
-            try (InputStream stream = response.body()) {
+            InputStream stream = response.body();
+            AtomicBoolean expired = new AtomicBoolean();
+            ScheduledFuture<?> watchdog = DEADLINES.schedule(() -> {
+                expired.set(true);
+                closeQuietly(stream);
+            }, Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+            try (InputStream body = new LimitedInputStream(stream, maxResponseBytes)) {
                 int status = response.statusCode();
-                if (status == 401 || status == 403 || status == 404) {
-                    throw new ForeignCallException(Kind.DENIED, status, "HTTP " + status);
+                refuseByStatus(status);
+                String sessionId = response.headers().firstValue("Mcp-Session-Id").orElse(null);
+                if (id < 0) {
+                    return new Exchange(sessionId, null);
                 }
-                if (status >= 300 && status != 202) {
-                    throw new ForeignCallException(Kind.UNAVAILABLE, status, "HTTP " + status);
-                }
-                String body = read(stream);
-                return new Exchange(status, response.headers().firstValue("Content-Type").orElse(""),
-                        response.headers().firstValue("Mcp-Session-Id").orElse(null), body);
+                String contentType = response.headers().firstValue("Content-Type").orElse("").toLowerCase(Locale.ROOT);
+                JsonNode answer = contentType.contains("text/event-stream") ? fromEvents(body, id) : fromJson(body, id);
+                return new Exchange(sessionId, answer);
+            } catch (IOException ex) {
+                throw new ForeignCallException(Kind.UNAVAILABLE, expired.get() ? Reason.TIMEOUT : Reason.UNREACHABLE);
+            } finally {
+                watchdog.cancel(false);
             }
+        } catch (HttpTimeoutException ex) {
+            throw new ForeignCallException(Kind.UNAVAILABLE, Reason.TIMEOUT);
         } catch (IOException ex) {
-            throw new ForeignCallException(Kind.UNAVAILABLE, "no answer: " + ex.getClass().getSimpleName());
+            throw new ForeignCallException(Kind.UNAVAILABLE, Reason.UNREACHABLE);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            throw new ForeignCallException(Kind.UNAVAILABLE, "interrupted");
+            throw new ForeignCallException(Kind.UNAVAILABLE, Reason.UNREACHABLE);
         }
     }
 
-    private String read(InputStream stream) throws IOException {
+    private static void refuseByStatus(int status) {
+        if (status == 401) {
+            throw new ForeignCallException(Kind.UNAUTHORIZED, Reason.HTTP_401, status);
+        }
+        if (status == 403) {
+            throw new ForeignCallException(Kind.DENIED, Reason.HTTP_403, status);
+        }
+        if (status == 404) {
+            throw new ForeignCallException(Kind.DENIED, Reason.HTTP_404, status);
+        }
+        if (status >= 300 && status < 400) {
+            throw new ForeignCallException(Kind.UNAVAILABLE, Reason.HTTP_REDIRECT, status);
+        }
+        if (status >= 400 && status < 500) {
+            throw new ForeignCallException(Kind.UNAVAILABLE, Reason.HTTP_OTHER_4XX, status);
+        }
+        if (status >= 500) {
+            throw new ForeignCallException(Kind.UNAVAILABLE, Reason.HTTP_5XX, status);
+        }
+    }
+
+    private static void closeQuietly(InputStream stream) {
+        try {
+            stream.close();
+        } catch (IOException ex) {
+            // Closing is how the deadline ends a read that does not come back; a failure to close changes nothing.
+        }
+    }
+
+    private static JsonNode fromJson(InputStream body, int id) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        long total = 0;
-        int count;
-        while ((count = stream.read(buffer)) > 0) {
-            total += count;
-            if (total > maxResponseBytes) {
-                throw new ForeignCallException(Kind.OVERSIZE, "response larger than " + maxResponseBytes + " bytes");
-            }
-            out.write(buffer, 0, count);
-        }
-        return out.toString(StandardCharsets.UTF_8);
-    }
-
-    private static JsonNode answer(Exchange exchange, int id) {
-        if (exchange.body.isBlank()) {
-            throw new ForeignCallException(Kind.UNAVAILABLE, "empty answer");
+        body.transferTo(out);
+        String text = out.toString(StandardCharsets.UTF_8);
+        if (text.isBlank()) {
+            throw new ForeignCallException(Kind.UNAVAILABLE, Reason.MALFORMED);
         }
         try {
-            if (exchange.contentType.toLowerCase(java.util.Locale.ROOT).contains("text/event-stream")) {
-                return fromEvents(exchange.body, id).orElseThrow(
-                        () -> new ForeignCallException(Kind.UNAVAILABLE, "no response for the request in the event stream"));
-            }
-            JsonNode node = JSON.readTree(exchange.body);
+            JsonNode node = JSON.readTree(text);
             if (node.isArray()) {
                 for (JsonNode element : node) {
                     if (isResponseTo(element, id)) {
                         return element;
                     }
                 }
-                throw new ForeignCallException(Kind.UNAVAILABLE, "no response for the request in the batch");
+                throw new ForeignCallException(Kind.UNAVAILABLE, Reason.MALFORMED);
             }
             if (!isResponseTo(node, id)) {
-                throw new ForeignCallException(Kind.UNAVAILABLE, "the answer is not the response to the request");
+                throw new ForeignCallException(Kind.UNAVAILABLE, Reason.MALFORMED);
             }
             return node;
         } catch (JacksonException ex) {
-            throw new ForeignCallException(Kind.UNAVAILABLE, "the answer is not JSON");
+            throw new ForeignCallException(Kind.UNAVAILABLE, Reason.MALFORMED);
         }
     }
 
-    private static boolean isResponseTo(JsonNode node, int id) {
-        return node.isObject() && node.path("id").isIntegralNumber() && node.path("id").asInt() == id
-                && (node.has("result") || node.has("error"));
-    }
-
-    /** Events are separated by a blank line; the {@code data} lines of one event are joined with a newline. */
-    private static Optional<JsonNode> fromEvents(String stream, int id) {
+    /**
+     * Events are separated by a blank line; the {@code data} lines of one event are joined with a newline. Reading stops at the response to
+     * the request, so a server that keeps the stream open afterwards costs nothing.
+     */
+    private static JsonNode fromEvents(InputStream body, int id) throws IOException {
+        BufferedReader reader = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8));
         StringBuilder data = new StringBuilder();
-        for (String line : (stream + "\n\n").split("\r?\n", -1)) {
+        String line;
+        while ((line = reader.readLine()) != null) {
             if (line.isEmpty()) {
-                if (!data.isEmpty()) {
-                    try {
-                        JsonNode node = JSON.readTree(data.toString());
-                        if (isResponseTo(node, id)) {
-                            return Optional.of(node);
-                        }
-                    } catch (JacksonException ex) {
-                        // An event that is not JSON is not the response; the next one may be.
-                    }
-                    data.setLength(0);
+                JsonNode node = parseEvent(data, id);
+                if (node != null) {
+                    return node;
                 }
+                data.setLength(0);
             } else if (line.startsWith("data:")) {
                 String value = line.substring(5);
                 if (!data.isEmpty()) {
@@ -308,6 +375,65 @@ public class ForeignMcpClient {
                 data.append(value.startsWith(" ") ? value.substring(1) : value);
             }
         }
-        return Optional.empty();
+        JsonNode last = parseEvent(data, id);
+        if (last == null) {
+            throw new ForeignCallException(Kind.UNAVAILABLE, Reason.MALFORMED);
+        }
+        return last;
+    }
+
+    private static JsonNode parseEvent(StringBuilder data, int id) {
+        if (data.isEmpty()) {
+            return null;
+        }
+        try {
+            JsonNode node = JSON.readTree(data.toString());
+            return isResponseTo(node, id) ? node : null;
+        } catch (JacksonException ex) {
+            // An event that is not JSON is not the response; the next one may be.
+            return null;
+        }
+    }
+
+    private static boolean isResponseTo(JsonNode node, int id) {
+        return node.isObject() && node.path("id").isIntegralNumber() && node.path("id").asInt() == id
+                && (node.has("result") || node.has("error"));
+    }
+
+    /** Fails the read that goes past the limit; the check is on bytes read, so a slow trickle and a flood are both bounded. */
+    private static final class LimitedInputStream extends FilterInputStream {
+
+        private final long limit;
+        private long total;
+
+        LimitedInputStream(InputStream in, long limit) {
+            super(in);
+            this.limit = limit;
+        }
+
+        @Override
+        public int read() throws IOException {
+            int value = super.read();
+            if (value >= 0) {
+                count(1);
+            }
+            return value;
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) throws IOException {
+            int count = super.read(buffer, offset, length);
+            if (count > 0) {
+                count(count);
+            }
+            return count;
+        }
+
+        private void count(int bytes) {
+            total += bytes;
+            if (total > limit) {
+                throw new ForeignCallException(Kind.OVERSIZE, Reason.OVERSIZE);
+            }
+        }
     }
 }

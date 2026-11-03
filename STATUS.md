@@ -10,20 +10,23 @@ Stan na 2026-11-03: etap 3 M6 zrobiony po stronie repozytorium, nic nie wdrożon
 - Manifest C6 `source: adapter` z listy narzędzi, którą adapter sam wystawia; `submitAdapterManifest` przez mTLS z ponawianiem.
 - Demo na `sooperset/mcp-atlassian` 0.23.1: tag istnieje, `LICENSE` to MIT (sprawdzony w tagu `v0.23.1`), obraz pobrany jeden raz po digeście
   `sha256:5b7c9b64d4eb3210cab74be8bf3e6aeea9ed14f3042dc59ba5c5287bd4dbe466` (indeks; arm64 `4206f3a9...`).
-- Testy: 67 w `ci/run.sh verify` (żaden pominięty) i 2 w profilu `real-image` na prawdziwym obrazie.
+- Testy: 94 w `ci/run.sh verify` (żaden pominięty) i 2 w profilu `real-image` na prawdziwym obrazie.
 
 ## Decyzje i odstępstwa od briefu
 
-- **Ryzyko zastępcze z podpowiedzi** (README, "Ryzyko lokalne a klasyfikacja administratora"): starter wymaga ryzyka każdego narzędzia, a lokalna kontrola Cedar
-  `call` wybiera grupę po ryzyku, więc stałe `DESTRUCTIVE` odmawiałoby czytelnikom. Ryzyko liczone z podpowiedzi służy tylko audytowi sidecara,
-  podpowiedziom `readOnlyHint`/`destructiveHint` w `tools/list` i drugiej, słabszej kontroli; gateway go nie czyta.
+- **Ryzyko zastępcze z podpowiedzi** (README, "Ryzyko lokalne a klasyfikacja administratora"; decyzja koordynatora: zostaje jako druga bariera): starter wymaga ryzyka każdego
+  narzędzia, a lokalna kontrola Cedar `call` wybiera grupę po ryzyku, więc stałe `DESTRUCTIVE` odmawiałoby czytelnikom. Ryzyko służy audytowi sidecara, podpowiedziom
+  `readOnlyHint`/`destructiveHint` w `tools/list` i drugiej, słabszej kontroli; gateway go nie czyta. Hash wpisu zależy od niego pośrednio (starter nadpisuje podpowiedzi w
+  definicji), co README opisuje. Nazwa ze słowem destrukcyjnym jest zawsze `DESTRUCTIVE`; narzędzie, które starter mimo to odrzuci, jest pomijane z logiem, nie zatrzymuje startu.
+  Uwaga dla admina: klasyfikacja niższa niż ryzyko zastępcze (`transition_issue` jako `UPDATE`) daje odmowę lokalną użytkownikom, których gateway przepuścił.
 - **Startowy `tools/list` wymaga nagłówka `Authorization`**: mcp-atlassian 0.23.1 odmawia każdego żądania bez niego (`401`), więc jest ustawienie
   `discovery-authorization` (wartość nie jest poświadczeniem niczyim). Narzędzia Jiry pojawiają się w liście tylko, gdy serwer ma w env `JIRA_URL` i
   `JIRA_PERSONAL_TOKEN` (zapychacz `placeholder-never-used`, nieużywany przy wyłączonym `ALLOW_GLOBAL_CRED_FALLBACK`).
 - **Starterowy manifest wyłączony** (`PlatformManifestAutoConfiguration` wykluczona): jego wpisy mają `risk` i `action`, a adapter ich nie ma. Brak `GET /mcp-manifest`.
-- **Sesja obcego serwera na wywołanie**: trzy żądania HTTP zamiast jednego, w zamian żadna sesja ani token nie są współdzielone.
-- Wszystkie błędy zgłoszone przez obcy serwer (wynik `isError`, błąd JSON-RPC, 401, 403, 404) to ten sam `not_found_or_denied`; prawdziwy błąd 500 Jiry jest więc
-  nieodróżnialny od odmowy. Szczegół w logu serwera obcego (`X-Request-Id` ten sam co w audycie).
+- **Sesja obcego serwera na wywołanie**: cztery żądania HTTP zamiast jednego, w zamian żadna sesja ani token nie są współdzielone.
+- Błędy zgłoszone przez obcy serwer (wynik `isError`, błąd JSON-RPC, 403, 404) to ten sam `not_found_or_denied`; HTTP 401 transportowe to `credential_required`. Powód techniczny
+  (`result_error`, `http_5xx`, `timeout` i inne z zamkniętej listy) jest w logu `event=foreign_call_failed` i w liczniku `mcp_adapter_foreign_failures_total{reason}`, bez treści z obcego serwera.
+  Ryzyko rezydualne (błąd zwrócony jako zwykły wynik) opisane w README.
 - Narzędzia z otwartą mapą w schemacie (`jira_update_issue.fields`, `jira_create_issue.additional_fields`) nie da się opublikować; poza demo.
 
 ## Czego nie zrobiono
@@ -41,11 +44,13 @@ Stan na 2026-11-03: etap 3 M6 zrobiony po stronie repozytorium, nic nie wdrożon
 2. **Konfiguracja gatewaya**: `mcp-jira` w trybie adaptera (`adapter_mode` per serverId, CC-206); natywny kontener `mcp-jira` i adapter nie mogą działać razem
    (ten sam serverId i alias `mcp-jira.internal`). Bez tej konfiguracji rejestr odpowiada `422 adapter_mode_mismatch`, a adapter ponawia co 60 s.
 3. **Compose**: fragment `deploy/docker-compose.demo.yml` (obraz `ghcr.io/sooperset/mcp-atlassian@sha256:5b7c9b64...`, już pobrany lokalnie, `pull_policy: never`; kontener
-   adaptera `mcp-server-adapter:m6-<sha7>` z raportu), sieć `adapter-foreign` wewnętrzna, mcp-atlassian w sieci mocka Jiry (`jira.internal`) i bez portów. Zmienne środowiska
-   jak w natywnym `mcp-jira` plus te z tabeli w README. Healthcheck mcp-atlassian używa Pythona z obrazu (do sprawdzenia).
+   adaptera `mcp-server-adapter:m6-<sha7>` z raportu). Dwie nowe sieci `internal`: `adapter-foreign` (adapter i mcp-atlassian) oraz `jira-foreign` (mcp-atlassian i **tylko** mock Jiry; fragment
+   dopisuje mockowi `jira-foreign` z aliasem `jira.internal`). mcp-atlassian nie może być w `servers` ani w `core`. Kontener obcego serwera ma `read_only`, `cap_drop: [ALL]`,
+   `no-new-privileges`, `tmpfs /tmp`, `mem_limit 512m`, `pids_limit 200` (sprawdzone na obrazie; healthcheck na Pythonie z obrazu działa). Obraz adaptera działa jako uid/gid 10001:
+   wolumen `/app/state` musi być dla niego zapisywalny (krok init stosu, osobna linia dla tego wolumenu, bo natywne serwery mają inny uid). Zmienne środowiska jak w natywnym `mcp-jira` plus te z tabeli w README.
 4. **Mock Jiry**: używa `/rest/api/2/myself`, `issue/{key}`, `issue/{key}/comment` (GET i POST), `/field`, `search`, `project`, `transitions`. Mock ma `myself`, `issue`, `search`, `project`, POST
    `comment` i `transitions`; GET `comment` i `/field` dostają 404 (z fałszywą Jirą `get_issue` mimo to działał). `Authorization: Bearer <pat>` zgadza się z mockiem.
-5. **Rejestr i polityki**: po starcie 6 wpisów `pending_approval` z `source: adapter`; administrator klasyfikuje je w portalu (`get_issue`, `search`, `get_all_projects`, `get_transitions`: `read`;
+5. **Rejestr i polityki** (klasyfikacja niższa niż ryzyko zastępcze daje odmowę lokalną, patrz README): po starcie 6 wpisów `pending_approval` z `source: adapter`; administrator klasyfikuje je w portalu (`get_issue`, `search`, `get_all_projects`, `get_transitions`: `read`;
    `add_comment`: `update`; `transition_issue`: do decyzji). Grupy Cedar jak dla Jiry (`mcp-jira-read`, `-write`); nazwy narzędzi bez przedrostka `jira_`.
 6. **Typ poświadczenia** `user-secret` dla `jira` w brokerze (PAT w `X-MCP-Credential`); adapter zamienia go na `Token <PAT>`.
 

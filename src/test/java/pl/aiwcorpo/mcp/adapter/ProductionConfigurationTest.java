@@ -94,4 +94,49 @@ class ProductionConfigurationTest {
                 "", Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1), DataSize.ofMegabytes(1), allowPlainHttp, null),
                 environment);
     }
+
+    @Test
+    void theAuthorizationFormatMustCarryTheCredentialOfTheUserExactlyOnce() {
+        assertThatCode(() -> AdapterConfiguration.requireSafeFormat("Token {credential}")).doesNotThrowAnyException();
+        assertThatCode(() -> AdapterConfiguration.requireSafeFormat("Bearer {credential}")).doesNotThrowAnyException();
+        assertThatThrownBy(() -> AdapterConfiguration.requireSafeFormat("Token one-fixed-pat-for-everybody")).hasMessageContaining("exactly once");
+        assertThatThrownBy(() -> AdapterConfiguration.requireSafeFormat("Token {credential} {credential}")).hasMessageContaining("exactly once");
+        assertThatThrownBy(() -> AdapterConfiguration.requireSafeFormat("Token {credential}\r\nX-Other: 1")).hasMessageContaining("line break");
+        assertThatThrownBy(() -> AdapterConfiguration.requireSafeFormat(null)).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void thePathOfTheForeignServerCannotMoveTheCredentialToAnotherHost() {
+        assertThatThrownBy(() -> checkPath("//elsewhere.internal/mcp")).hasMessageContaining("mcp-path");
+        assertThatThrownBy(() -> checkPath("http://elsewhere.internal/mcp")).hasMessageContaining("mcp-path");
+        assertThatCode(() -> checkPath("/mcp")).doesNotThrowAnyException();
+    }
+
+    @Test
+    void outsideDevTheRegistryChannelIsHttpsWithAClientCertificate() {
+        MockEnvironment production = new MockEnvironment();
+        AdapterProperties.Registry http = registry("http://mcp-gateway.internal:8443", "adapter-registry");
+        AdapterProperties.Registry noBundle = registry("https://mcp-gateway.internal:8443", null);
+        AdapterProperties.Registry good = registry("https://mcp-gateway.internal:8443", "adapter-registry");
+
+        assertThatThrownBy(() -> AdapterConfiguration.requireSafeRegistry(http, production)).hasMessageContaining("https");
+        assertThatThrownBy(() -> AdapterConfiguration.requireSafeRegistry(noBundle, production)).hasMessageContaining("ssl-bundle");
+        assertThatCode(() -> AdapterConfiguration.requireSafeRegistry(good, production)).doesNotThrowAnyException();
+        assertThatCode(() -> AdapterConfiguration.requireSafeRegistry(registry(null, null), production)).doesNotThrowAnyException();
+        MockEnvironment dev = new MockEnvironment();
+        dev.setActiveProfiles("dev");
+        assertThatCode(() -> AdapterConfiguration.requireSafeRegistry(http, dev)).doesNotThrowAnyException();
+    }
+
+    private static AdapterProperties.Registry registry(String url, String bundle) {
+        return new AdapterProperties.Registry(url == null ? null : URI.create(url), bundle, Duration.ofSeconds(1), Duration.ofSeconds(1),
+                Duration.ofSeconds(1), DataSize.ofMegabytes(1));
+    }
+
+    private static void checkPath(String path) {
+        AdapterProperties.Foreign foreign = new AdapterProperties.Foreign(URI.create("https://mcp-atlassian.internal:8443"), path,
+                "Token {credential}", "", Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1), DataSize.ofMegabytes(1), false,
+                null);
+        AdapterConfiguration.requireSafeUrl(foreign, new MockEnvironment());
+    }
 }

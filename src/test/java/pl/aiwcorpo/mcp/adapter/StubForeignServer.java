@@ -68,6 +68,16 @@ public final class StubForeignServer implements AutoCloseable {
     private volatile boolean requireAuthorization = true;
     private volatile Function<Call, Reply> handler = call -> Reply.text("ok");
     private volatile String redirectTo;
+    private volatile Stream stream = Stream.NORMAL;
+    private volatile String sessionIdToSend;
+
+    /** How the stub treats an event stream: normally, or never sends the response, or sends it and keeps the stream open. */
+    public enum Stream {
+        NORMAL,
+        SILENT_FOR_EVER,
+        TRICKLE_FOR_EVER,
+        OPEN_AFTER_RESPONSE
+    }
 
     public StubForeignServer() {
         try {
@@ -104,6 +114,16 @@ public final class StubForeignServer implements AutoCloseable {
         return this;
     }
 
+    public StubForeignServer stream(Stream value) {
+        this.stream = value;
+        return this;
+    }
+
+    public StubForeignServer sessionId(String value) {
+        this.sessionIdToSend = value;
+        return this;
+    }
+
     public StubForeignServer redirectCallsTo(String location) {
         this.redirectTo = location;
         return this;
@@ -128,6 +148,8 @@ public final class StubForeignServer implements AutoCloseable {
         deletes.clear();
         handler = call -> Reply.text("ok");
         redirectTo = null;
+        stream = Stream.NORMAL;
+        sessionIdToSend = null;
     }
 
     private void handle(HttpExchange exchange) throws IOException {
@@ -148,7 +170,8 @@ public final class StubForeignServer implements AutoCloseable {
             String method = request.path("method").asString("");
             switch (method) {
                 case "initialize" -> {
-                    exchange.getResponseHeaders().add("Mcp-Session-Id", "stub-session-" + sessions.incrementAndGet());
+                    exchange.getResponseHeaders().add("Mcp-Session-Id",
+                            sessionIdToSend != null ? sessionIdToSend : "stub-session-" + sessions.incrementAndGet());
                     ObjectNode result = JSON.createObjectNode();
                     result.put("protocolVersion", "2025-06-18");
                     result.putObject("capabilities").putObject("tools");
@@ -177,12 +200,39 @@ public final class StubForeignServer implements AutoCloseable {
                 authorization, exchange.getRequestHeaders().getFirst("X-Request-Id"),
                 exchange.getRequestHeaders().getFirst("Mcp-Session-Id"));
         calls.add(call);
+        if (stream != Stream.NORMAL) {
+            streamBadly(exchange, request, handler.apply(call));
+            return;
+        }
         Reply reply = handler.apply(call);
         if (reply.status() != 200) {
             send(exchange, reply.status(), "application/json", "{\"error\": \"stub failure\"}");
             return;
         }
         respond(exchange, request, reply.body());
+    }
+
+    private void streamBadly(HttpExchange exchange, JsonNode request, Reply reply) throws IOException {
+        exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+        exchange.sendResponseHeaders(200, 0);
+        OutputStream out = exchange.getResponseBody();
+        try {
+            if (stream == Stream.OPEN_AFTER_RESPONSE) {
+                ObjectNode envelope = JSON.createObjectNode();
+                envelope.put("jsonrpc", "2.0");
+                envelope.set("id", request.get("id"));
+                envelope.set("result", JSON.readTree(reply.body()));
+                out.write(("event: message\ndata: " + envelope + "\n\n").getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            }
+            while (true) {
+                out.write(": keep-alive\n\n".getBytes(StandardCharsets.UTF_8));
+                out.flush();
+                Thread.sleep(stream == Stream.SILENT_FOR_EVER ? 200 : 100);
+            }
+        } catch (IOException | InterruptedException ex) {
+            // The client closed the connection: that is the end of the stream.
+        }
     }
 
     private void respond(HttpExchange exchange, JsonNode request, String result) throws IOException {

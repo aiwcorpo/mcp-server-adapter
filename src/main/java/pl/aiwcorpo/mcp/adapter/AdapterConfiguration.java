@@ -35,6 +35,7 @@ class AdapterConfiguration {
     ForeignMcpClient foreignMcpClient(AdapterProperties properties, ObjectProvider<SslBundles> bundles, Environment environment) {
         AdapterProperties.Foreign foreign = properties.foreign();
         requireSafeUrl(foreign, environment);
+        requireSafeFormat(foreign.authorizationFormat());
         SSLContext tls = foreign.sslBundle() == null || foreign.sslBundle().isBlank() ? null
                 : bundles.getObject().getBundle(foreign.sslBundle()).createSslContext();
         return new ForeignMcpClient(ForeignMcpClient.httpClient(foreign, tls), foreign);
@@ -59,6 +60,37 @@ class AdapterConfiguration {
             throw new IllegalStateException("the foreign server must be reached over https (the credential of the user travels "
                     + "there); http only in the dev profile or with aiwcorpo.mcp.adapter.foreign.allow-plain-http=true");
         }
+        ForeignMcpClient.endpoint(foreign);
+    }
+
+    /**
+     * The header must be built from the credential of the user and from nothing else: a format without {@code {credential}} sends one fixed
+     * value for everybody (a shared account instead of the identity of the user), and a line break would split the header.
+     */
+    static void requireSafeFormat(String format) {
+        if (format == null || format.indexOf('\r') >= 0 || format.indexOf('\n') >= 0) {
+            throw new IllegalStateException("aiwcorpo.mcp.adapter.foreign.authorization-format is not set or has a line break");
+        }
+        int first = format.indexOf("{credential}");
+        if (first < 0 || format.indexOf("{credential}", first + 1) >= 0) {
+            throw new IllegalStateException("aiwcorpo.mcp.adapter.foreign.authorization-format must contain {credential} exactly once "
+                    + "(the header carries the credential of the calling user)");
+        }
+    }
+
+    /** Outside dev the manifest goes over mTLS with a client certificate; an address that is not https or has no bundle would retry for ever. */
+    static void requireSafeRegistry(AdapterProperties.Registry registry, Environment environment) {
+        URI url = registry.adminUrl();
+        if (url == null || environment.acceptsProfiles(Profiles.of(PlatformConfigurationGuard.DEV_PROFILE))) {
+            return;
+        }
+        if (!"https".equalsIgnoreCase(url.getScheme()) || url.getHost() == null || url.getUserInfo() != null) {
+            throw new IllegalStateException("aiwcorpo.mcp.adapter.registry.admin-url must be an https address without credentials");
+        }
+        if (registry.sslBundle() == null || registry.sslBundle().isBlank()) {
+            throw new IllegalStateException("aiwcorpo.mcp.adapter.registry.ssl-bundle is not set: the registry channel needs the client "
+                    + "certificate mcp-adapter-<serverId> (mTLS)");
+        }
     }
 
     /** The certificate of the gateway must name the host it is reached by; set explicitly instead of relying on a default of the HTTP client. */
@@ -76,8 +108,8 @@ class AdapterConfiguration {
 
     @Bean
     ToolCallbackProvider foreignToolCallbacks(ForeignTools tools, ForeignMcpClient client, AdapterProperties properties,
-                                              McpPlatformProperties platform) {
-        List<ToolCallback> callbacks = tools.callbacks(client, platform.system(), properties);
+                                              McpPlatformProperties platform, ObjectProvider<MeterRegistry> meters) {
+        List<ToolCallback> callbacks = tools.callbacks(client, platform.system(), properties, meters.getIfAvailable());
         return ToolCallbackProvider.from(callbacks);
     }
 
@@ -93,8 +125,9 @@ class AdapterConfiguration {
 
     @Bean
     ManifestSubmitter manifestSubmitter(AdapterProperties properties, McpPlatformProperties platform, ManifestCheck manifest,
-                                        ObjectProvider<SslBundles> bundles, ObjectProvider<MeterRegistry> meters) {
+                                        ObjectProvider<SslBundles> bundles, ObjectProvider<MeterRegistry> meters, Environment environment) {
         AdapterProperties.Registry registry = properties.registry();
+        requireSafeRegistry(registry, environment);
         HttpClient.Builder builder = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER)
                 .version(HttpClient.Version.HTTP_1_1).connectTimeout(registry.requestTimeout());
         if (registry.sslBundle() != null && !registry.sslBundle().isBlank()) {

@@ -7,7 +7,7 @@ stages:
   - image
 
 default:
-  image: maven:3.9.12-eclipse-temurin-25
+  image: maven:3.9.12-eclipse-temurin-25@sha256:4f82a03a7d6679281952d628131299b1be88d7030a49c6a2b7d2ba2642e44e3e
 
 variables:
   MAVEN_REPO_LOCAL: "$CI_PROJECT_DIR/.m2/repository"

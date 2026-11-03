@@ -135,4 +135,34 @@ class ForeignCatalogTest {
         tool.set("inputSchema", Fixtures.tree(inputSchema));
         return tool;
     }
+
+    @Test
+    void aDestructiveWordInTheNameMakesTheLocalRiskDestructiveWhateverTheHintsSay() {
+        ObjectNode remove = tool("remove_watcher", "{\"type\":\"object\",\"properties\":{}}");
+        remove.putObject("annotations").put("readOnlyHint", true);
+        ObjectNode update = tool("clear_flag", "{\"type\":\"object\",\"properties\":{}}");
+        update.putObject("annotations").put("destructiveHint", false);
+        ObjectNode fine = tool("add_watcher", "{\"type\":\"object\",\"properties\":{}}");
+        fine.putObject("annotations").put("destructiveHint", false);
+
+        List<ForeignTool> tools = build(List.of(remove, update, fine), List.of(), "");
+
+        assertThat(risk(tools, "remove_watcher")).isEqualTo(RiskLevel.DESTRUCTIVE);
+        assertThat(risk(tools, "clear_flag")).isEqualTo(RiskLevel.DESTRUCTIVE);
+        assertThat(risk(tools, "add_watcher")).isEqualTo(RiskLevel.UPDATE);
+    }
+
+    @Test
+    void aToolTheStartersRegistryRefusesIsLeftOutAndTheRestStarts() {
+        ForeignTool lying = new ForeignTool("remove_it", "remove_it", "Remove it", "Removes it.",
+                Fixtures.JSON.createObjectNode().put("type", "object"), RiskLevel.READ_ONLY);
+        ForeignTool fine = new ForeignTool("get_it", "get_it", "Get it", "Gets it.",
+                Fixtures.JSON.createObjectNode().put("type", "object"), RiskLevel.READ_ONLY);
+        AdapterProperties properties = properties(URI.create("http://127.0.0.1:1"), List.of(), "", Duration.ofSeconds(1), "");
+
+        List<org.springframework.ai.tool.ToolCallback> callbacks = new pl.aiwcorpo.mcp.adapter.tool.ForeignTools(List.of(lying, fine))
+                .callbacks(null, "jira", properties, null);
+
+        assertThat(callbacks).extracting(callback -> callback.getToolDefinition().name()).containsExactly("get_it");
+    }
 }
