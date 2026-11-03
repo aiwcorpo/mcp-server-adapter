@@ -1,0 +1,81 @@
+# Publishes a tagged release as an image on ghcr.io (ghcr.io/aiwcorpo/mcp-server-adapter:<version>) and attaches a CycloneDX SBOM.
+# Runs only on a v* tag; nothing is published from branches. Not run yet: the repository and the organization packages do not exist
+# at the time of writing.
+#
+# Two jobs, so that code under test never sees a write token: verify runs the tests with contents: read and a read-only credential;
+# publish has packages: write, no build cache, and the write token only in the environment of the push step. The platform
+# artifacts (mcp-platform-starter, mcp-contracts) are read from GitHub Packages with MCP_PLATFORM_READ_TOKEN (read:packages only,
+# environment "release").
+name: release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+*']
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      MCP_MAVEN_REPOSITORY_URL: https://maven.pkg.github.com/aiwcorpo/mcp-contracts
+      MCP_MAVEN_REPOSITORY_USER: ${{ vars.MCP_PLATFORM_READ_USER }}
+      MCP_MAVEN_REPOSITORY_PASSWORD: ${{ secrets.MCP_PLATFORM_READ_TOKEN }}
+    steps:
+      # actions/checkout v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      # actions/setup-java v4.7.1
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Tag matches the project version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          test "$(./mvnw -q -B -N help:evaluate -Dexpression=project.version -DforceStdout)" = "$version"
+      - name: Verify (tests, none skipped)
+        run: ci/run.sh verify
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # actions/checkout v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      # actions/setup-java v4.7.1
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Build the jar and the SBOM
+        run: |
+          ./mvnw -B -s .ci/settings.xml -DskipTests package org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom
+        env:
+          MCP_MAVEN_REPOSITORY_URL: https://maven.pkg.github.com/aiwcorpo/mcp-contracts
+          MCP_MAVEN_REPOSITORY_USER: ${{ vars.MCP_PLATFORM_READ_USER }}
+          MCP_MAVEN_REPOSITORY_PASSWORD: ${{ secrets.MCP_PLATFORM_READ_TOKEN }}
+      - name: Build the image
+        run: docker build -t "ghcr.io/aiwcorpo/mcp-server-adapter:${GITHUB_REF_NAME#v}" .
+      - name: Push the image
+        run: |
+          echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
+          docker push "ghcr.io/aiwcorpo/mcp-server-adapter:${GITHUB_REF_NAME#v}"
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # actions/upload-artifact v4.6.2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sbom
+          path: target/bom.*

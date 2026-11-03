@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sidecar of a foreign MCP server (ws-13). Built on mcp-platform-starter: it takes traffic only from the gateway
+  (mTLS + internal JWT), submits the manifest of the foreign server to the registry and forwards tools/call with the
+  credential of the calling user. One deployable artifact: target/mcp-server-adapter.jar.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>pl.aiwcorpo.mcp.adapter</groupId>
+    <artifactId>mcp-server-adapter</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+    <name>mcp-server-adapter</name>
+    <description>Sidecar that puts a foreign MCP server behind the platform gateway.</description>
+    <url>https://github.com/aiwcorpo/mcp-server-adapter</url>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <scm>
+        <url>https://github.com/aiwcorpo/mcp-server-adapter</url>
+        <connection>scm:git:https://github.com/aiwcorpo/mcp-server-adapter.git</connection>
+    </scm>
+
+    <!-- Must be the Spring Boot version mcp-platform-starter is built against. -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.0</version>
+        <relativePath/>
+    </parent>
+
+    <properties>
+        <java.version>25</java.version>
+        <maven.compiler.release>25</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <mcp-platform.version>3.0.0-beta-12</mcp-platform.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Pins the starter, mcp-platform-test, mcp-contracts and Spring AI. -->
+            <dependency>
+                <groupId>pl.aiwcorpo.mcp</groupId>
+                <artifactId>mcp-platform-bom</artifactId>
+                <version>${mcp-platform.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>pl.aiwcorpo.mcp</groupId>
+            <artifactId>mcp-platform-starter</artifactId>
+        </dependency>
+
+        <!-- Stands in for the gateway in tests (test JWKS, internal JWTs, C3 headers). Never outside test scope. -->
+        <dependency>
+            <groupId>pl.aiwcorpo.mcp</groupId>
+            <artifactId>mcp-platform-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub Packages (aiwcorpo/mcp-server-adapter)</name>
+            <url>https://maven.pkg.github.com/aiwcorpo/mcp-server-adapter</url>
+        </repository>
+    </distributionManagement>
+
+    <build>
+        <finalName>mcp-server-adapter</finalName>
+        <plugins>
+            <!-- Apache-2.0 asks for LICENSE and NOTICE inside every distributed jar. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>license-files</id>
+                        <phase>process-resources</phase>
+                        <goals><goal>copy-resources</goal></goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/META-INF</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.basedir}</directory>
+                                    <includes>
+                                        <include>LICENSE</include>
+                                        <include>NOTICE</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <!-- The jar is an application, not a library: it is published as an image, not to the Maven registry. -->
+            <plugin>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

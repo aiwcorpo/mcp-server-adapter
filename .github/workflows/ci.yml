@@ -1,0 +1,26 @@
+# Thin wrapper: all logic is in ci/run.sh. The tests need no container runtime and no secret: the job has read access to the
+# repository only. The platform artifacts (mcp-platform-starter, mcp-contracts) come from GitHub Packages with the read-only
+# credentials MCP_MAVEN_REPOSITORY_RO_USER / _RO_PASSWORD (repository secrets, not available to pull requests from forks).
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    container:
+      image: maven:3.9.12-eclipse-temurin-25
+    env:
+      MCP_MAVEN_REPOSITORY_URL: ${{ vars.MCP_MAVEN_REPOSITORY_URL }}
+      MCP_MAVEN_REPOSITORY_USER: ${{ secrets.MCP_MAVEN_REPOSITORY_RO_USER }}
+      MCP_MAVEN_REPOSITORY_PASSWORD: ${{ secrets.MCP_MAVEN_REPOSITORY_RO_PASSWORD }}
+    steps:
+      # actions/checkout v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: ci/run.sh verify

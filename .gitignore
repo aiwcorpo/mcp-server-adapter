@@ -1,0 +1,19 @@
+# Build
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+# IDE
+.idea/
+*.iml
+.vscode/
+# Secrets and TLS material, never committed
+*.p12
+*.jks
+*.pem
+*.key
+*.crt
+*.env
+!deploy/*.env.template
+# Logs and local caches
+*.log
+.m2/

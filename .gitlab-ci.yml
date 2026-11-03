@@ -1,0 +1,36 @@
+# Thin wrapper: all logic is in ci/run.sh, which also runs in a developer's shell.
+# The tests need no container runtime, so verify runs on any runner; only the image job of the default branch needs the Docker
+# socket (runner tagged docker-socket). CI/CD variables MCP_MAVEN_REPOSITORY_URL, _USER, _PASSWORD: deploy token with
+# read_package_registry, masked.
+stages:
+  - verify
+  - image
+
+default:
+  image: maven:3.9.12-eclipse-temurin-25
+
+variables:
+  MAVEN_REPO_LOCAL: "$CI_PROJECT_DIR/.m2/repository"
+
+verify:
+  stage: verify
+  cache:
+    key: maven
+    policy: pull
+    paths: [.m2/repository]
+  script:
+    - ci/run.sh verify
+  artifacts:
+    when: always
+    paths: [target/mcp-server-adapter.jar]
+    reports:
+      junit: "target/surefire-reports/TEST-*.xml"
+
+build-image:
+  stage: image
+  tags: [docker-socket]
+  needs: [verify]
+  script:
+    - ci/run.sh image
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
