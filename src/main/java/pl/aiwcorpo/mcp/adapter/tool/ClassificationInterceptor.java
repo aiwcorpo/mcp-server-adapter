@@ -11,7 +11,7 @@ import pl.aiwcorpo.mcp.platform.observability.ToolCallInterceptor;
  * It is refused here, on top of the log and the counter the starter writes for it, so that the call never reaches the foreign server.
  *
  * <p>The classification may differ from what the foreign server's hints suggest (the administrator called a tool read that the server
- * marks as a write). That is allowed, since the administrator decides, but it is logged and counted
+ * marks as a write). That is allowed, since the administrator decides, but it is logged at WARN and counted
  * ({@code mcp_adapter_classification_divergence_total}) so that a reviewer sees where the two disagree (recommendation W8).
  */
 final class ClassificationInterceptor implements ToolCallInterceptor {
@@ -36,7 +36,7 @@ final class ClassificationInterceptor implements ToolCallInterceptor {
         }
         String hint = invocation.risk().name();
         if (!hint.equals(classified)) {
-            LOG.info("event=adapter_classification_diverges tool={} classified={} hints={}", invocation.tool(), classified, hint);
+            LOG.warn("event=adapter_classification_diverges tool={} classified={} hints={}", invocation.tool(), classified, hint);
             if (meters != null) {
                 meters.counter("mcp_adapter_classification_divergence_total", "classified", classified, "hints", hint).increment();
             }

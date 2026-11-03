@@ -12,10 +12,12 @@ import pl.aiwcorpo.mcp.platform.guard.ToolRiskRegistry;
  * the administrator gave in the registry and the gateway put in the token ({@code mcp_risk}, {@code mcp_action}, CC-226), not the
  * stand-in worked out from the hints of the foreign server.
  *
- * <p>The starter asks the registry for the risk of the tool when it builds the Cedar request of the local {@code call} check and when
- * it writes a refusal to the audit. Those happen on the request thread of a call, where the caller is known, so they get the
- * classification. Everything that asks outside a call (the hints and the title put in {@code tools/list} at startup, hence the manifest and its
- * hash) gets the stand-in, which is the only place the starter still needs it.
+ * <p>The starter asks the registry for the risk of the tool when it builds the Cedar request of the local {@code call} check, and when the
+ * policy check (not the interceptor, not the tool wrapper) writes a refusal to the audit. Those happen on the request thread of a call, where
+ * the caller is known, so they get the classification. The {@code tool_call} event of the wrapper, including the one written when
+ * {@link ClassificationInterceptor} refuses, carries the risk the tool was registered with, which is the stand-in: the wrapper reads it once, at
+ * registration. Everything that asks outside a call (the hints and the title put in {@code tools/list} at startup, hence the manifest and its
+ * hash) gets the stand-in too, which is the only place the starter still needs it.
  */
 public final class ClassifiedToolRiskRegistry extends ToolRiskRegistry {
 

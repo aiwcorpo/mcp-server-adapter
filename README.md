@@ -94,7 +94,8 @@ Od startera 3.0.0-beta-14 i kontraktów 6.3.2 (CC-226, CC-227) gateway wysyła d
   serwera), loguje `event=adapter_local_denied` i liczy `mcp_adapter_local_denied_total{reason}`. Gateway takiej wartości po CC-227 nie wyśle, więc zdarzenie znaczy gateway niezgodny z tą wersją.
 - **Rozbieżność z podpowiedziami jest widoczna.** Gdy klasyfikacja różni się od ryzyka z podpowiedzi obcego serwera (administrator uznał za odczyt narzędzie, które serwer oznacza jako zapis), adapter przepuszcza
   (decyduje administrator), ale loguje `event=adapter_classification_diverges tool=... classified=... hints=...` i liczy `mcp_adapter_classification_divergence_total{classified,hints}` (zalecenie W8):
-  przegląd rozbieżności to przegląd tego, czy administrator nie podniósł zapisu do odczytu.
+  przegląd rozbieżności to przegląd tego, czy administrator nie podniósł zapisu do odczytu. Log ma poziom WARN. Propozycja alertu: `increase(mcp_adapter_classification_divergence_total{hints!="READ_ONLY"}[1h]) > 0`
+  (klasyfikacja `READ_ONLY` narzędzia, które obcy serwer uważa za zapis lub niepewne); w demo z czterema narzędziami odczytu licznik powinien stać w miejscu, więc każdy przyrost jest sygnałem do przeglądu klasyfikacji.
 
 **Ryzyko zastępcze zostaje tylko tam, gdzie starter wymaga go przed pierwszym wywołaniem**: przy rejestracji narzędzia, do podpowiedzi `readOnlyHint` i `destructiveHint` w `tools/list`, a więc do definicji
 w manifeście i do `definitionHash`. Liczy się z podpowiedzi obcego serwera, w jedną stronę błędu (niepewne to `DESTRUCTIVE`): `readOnlyHint: true` daje `READ_ONLY`, jawne `destructiveHint: false` daje `UPDATE`,
