@@ -41,7 +41,7 @@ class RealImageTest {
         registry.add("aiwcorpo.mcp.adapter.foreign.url", () -> System.getProperty("mcp.adapter.real.foreign.url", "http://127.0.0.1:18931"));
         registry.add("aiwcorpo.mcp.adapter.foreign.discovery-authorization", () -> "Token discovery-only");
         registry.add("aiwcorpo.mcp.adapter.tools.include",
-                () -> "jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions,jira_add_comment,jira_transition_issue");
+                () -> "jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions");
         registry.add("aiwcorpo.mcp.adapter.tools.strip-prefix", () -> "jira_");
     }
 
@@ -72,7 +72,7 @@ class RealImageTest {
     void theRealToolsAreListedBoundedAndEachUserReachesJiraWithTheirOwnToken() {
         try (McpSyncClient alice = client("Bearer alice-pat"); McpSyncClient bob = client("Bearer bob-pat")) {
             assertThat(alice.listTools().tools()).extracting(McpSchema.Tool::name).containsExactlyInAnyOrder("get_issue", "search",
-                    "get_all_projects", "get_transitions", "add_comment", "transition_issue");
+                    "get_all_projects", "get_transitions");
 
             JsonNode forAlice = JSON.readTree(text(alice.callTool(McpSchema.CallToolRequest.builder("get_issue")
                     .arguments(Map.of("issue_key", "ABC-1")).build())));

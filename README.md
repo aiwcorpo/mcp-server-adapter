@@ -97,7 +97,7 @@ dostęp jest najwyżej taki, jaki daje gateway). Skutki, o których muszą wiedz
   ryzyka zastępczego i gubi pozostałe podpowiedzi (`idempotentHint`, `openWorldHint`; `title` zostaje). Manifest i `definitionHash` obejmują definicję taką, jaką adapter
   wystawia, więc **hash pośrednio zależy od podpowiedzi obcego serwera i od tej reguły**. Dla narzędzia, które nie zgłosiło żadnej podpowiedzi, administrator zobaczy
   `destructiveHint: true`, którego obcy serwer nie zgłosił. To tylko podpowiedzi (nikt ich nie czyta jako ryzyka), ale nie należy ich brać za dane obcego serwera.
-- **Uwaga dla administratora przy klasyfikacji:** klasyfikacja niższa niż ryzyko zastępcze (np. `transition_issue`, które zgłasza `destructiveHint: true`, jako `UPDATE`) sprawia,
+- **Uwaga dla administratora przy klasyfikacji:** klasyfikacja niższa niż ryzyko zastępcze (np. narzędzie z `destructiveHint: true` jako `UPDATE`; w demo, które ma tylko narzędzia odczytu, to nie występuje) sprawia,
   że gateway przepuści użytkownika z grupą zapisu, a adapter odmówi mu lokalnie (`access_denied` w audycie adaptera). Zawodzi to bezpiecznie i widocznie; żeby narzędzie działało,
   grupa użytkownika musi spełniać obie kontrole albo narzędzie zostaje sklasyfikowane zgodnie z ryzykiem zastępczym. Klasyfikacja wyższa niż ryzyko zastępcze działa bez uwag
   (lokalna kontrola jest wtedy luźniejsza).
@@ -157,26 +157,28 @@ ghcr.io/sooperset/mcp-atlassian@sha256:5b7c9b64d4eb3210cab74be8bf3e6aeea9ed14f30
 Konfiguracja obcego serwera (pełny fragment Compose: `deploy/docker-compose.demo.yml`):
 
 - `--transport streamable-http --port 8000 --host 0.0.0.0`; endpoint `/mcp`.
-- `ENABLED_TOOLS=jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions,jira_add_comment,jira_transition_issue`: sześć narzędzi,
-  które mock Jiry z `mcp-platform-dev/mocks` obsługuje (`/myself`, `issue`, `search`, `project`, `comment`, `transitions`). `jira_delete_issue` i reszta
-  z 93 narzędzi nie są włączone.
+- `ENABLED_TOOLS=jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions`: cztery narzędzia tylko do odczytu, które mock Jiry z
+  `mcp-platform-dev/mocks` obsługuje (`/myself`, `issue`, `search`, `project`, `transitions`). Od kontraktów 6.3.0 (CC-227) rejestr klasyfikuje narzędzie adaptera
+  wyłącznie jako `READ_ONLY` (narzędzia obcego serwera nie mają `resourceRefs`, więc zapis nie ma zakresu zasobów), dlatego demo nie włącza żadnego narzędzia zapisu
+  (`jira_add_comment`, `jira_transition_issue`, `jira_delete_issue` i reszta z 93 narzędzi są wyłączone). Zapisujące narzędzie w `ENABLED_TOOLS` zostałoby w rejestrze
+  bez dozwolonej klasyfikacji, a więc ukryte (`tool_disabled`). Przejście starterowego adaptera na kontrakty 6.3.0 jest w następnej fali.
 - `JIRA_URL` na system (mock), `JIRA_PERSONAL_TOKEN=placeholder-never-used` jako zapychacz. Bez niego serwer nie pokazuje narzędzi Jiry w `tools/list`
   (sprawdzone na obrazie). Wartość nigdy nie jest użyta, bo `ALLOW_GLOBAL_CRED_FALLBACK` jest wyłączone (jest domyślnie wyłączone; fragment ustawia je jawnie na `false`):
   wywołanie bez poświadczenia w nagłówku kończy się tam `401`.
-- Kontener obcego serwera jest utwardzony we fragmencie Compose: `read_only`, `cap_drop: [ALL]`, `no-new-privileges`, `tmpfs /tmp`, limity pamięci (512 MB) i procesów (200); sprawdzone na przypiętym obrazie (działa jako uid 1000 `app`). Siedzi w dwóch sieciach `internal`: `adapter-foreign` (z adapterem) i `jira-foreign` (z mockiem Jiry, który dostaje w niej alias `jira.internal`); nie jest w `servers` ani w `core`, więc nie widzi Redisa, serwera polityk, innych serwerów ani administracyjnego API mocka.
+- Kontener obcego serwera jest utwardzony we fragmencie Compose: `read_only`, `cap_drop: [ALL]`, `no-new-privileges`, `tmpfs /tmp`, limity pamięci (512 MB) i procesów (200); sprawdzone na przypiętym obrazie (działa jako uid 1000 `app`). Siedzi w dwóch sieciach `internal`: `adapter-foreign` (z adapterem) i `jira-foreign` (z mockiem Jiry, który dostaje w niej alias `jira.internal`); nie jest w `servers` ani w `core`, więc nie widzi Redisa, serwera polityk ani innych serwerów. Mock Jiry jest dla niego osiągalny na całym porcie, także WireMock `/__admin` (chroniony wyłącznie basic auth), więc obcy serwer jest tam tak samo ufany jak hasło mocka; w prawdziwym wdrożeniu system docelowy nie ma takiego panelu.
 - Serwer odmawia też `initialize` bez nagłówka `Authorization`, dlatego `MCP_FOREIGN_DISCOVERY_AUTHORIZATION=Token discovery-only` dla startowego `tools/list`.
 - Poświadczenie użytkownika: adapter wysyła `Authorization: Token <PAT>`, serwer przekazuje go do Jiry jako `Authorization: Bearer <PAT>` (potwierdzone na prawdziwym obrazie
   z fałszywą Jirą), co zgadza się z mockiem (`Bearer alice-pat`, `bob-pat`, ...).
 
-Sześć narzędzi po przepisaniu schematów: `get_issue`, `search`, `get_all_projects`, `get_transitions`, `add_comment`, `transition_issue` (przedrostek `jira_`
-usunięty). `transition_issue` ma `destructiveHint: true`, więc lokalnie jest `DESTRUCTIVE`; administrator klasyfikuje je w portalu i może uznać je za `UPDATE`.
+Cztery narzędzia po przepisaniu schematów: `get_issue`, `search`, `get_all_projects`, `get_transitions` (przedrostek `jira_` usunięty), wszystkie z `readOnlyHint: true`,
+więc lokalnie `READ_ONLY`; administrator klasyfikuje je w portalu jako `read` (to jedyna dozwolona klasyfikacja adaptera).
 
 Sprawdzenie na prawdziwym obrazie (jednorazowy kontener na domyślnej sieci Dockera, port tylko na 127.0.0.1, brak dostępu do stosu, fałszywa Jira na hoście):
 
 ```bash
 docker run -d --rm --name adapter-probe -p 127.0.0.1:18931:8000 \
   -e JIRA_URL=http://host.docker.internal:18932 -e JIRA_PERSONAL_TOKEN=placeholder-never-used -e TOOLSETS=all \
-  -e ENABLED_TOOLS=jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions,jira_add_comment,jira_transition_issue,jira_delete_issue \
+  -e ENABLED_TOOLS=jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions \
   ghcr.io/sooperset/mcp-atlassian@sha256:5b7c9b64d4eb3210cab74be8bf3e6aeea9ed14f3042dc59ba5c5287bd4dbe466 \
   --transport streamable-http --port 8000 --host 0.0.0.0
 ./mvnw -B test -Preal-image -Dtest=RealImageTest    # fałszywa Jira (Bearer alice-pat, bob-pat; issue ABC-1) na 127.0.0.1:18932

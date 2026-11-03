@@ -18,7 +18,7 @@ Stan na 2026-11-03: etap 3 M6 zrobiony po stronie repozytorium, nic nie wdrożon
   narzędzia, a lokalna kontrola Cedar `call` wybiera grupę po ryzyku, więc stałe `DESTRUCTIVE` odmawiałoby czytelnikom. Ryzyko służy audytowi sidecara, podpowiedziom
   `readOnlyHint`/`destructiveHint` w `tools/list` i drugiej, słabszej kontroli; gateway go nie czyta. Hash wpisu zależy od niego pośrednio (starter nadpisuje podpowiedzi w
   definicji), co README opisuje. Nazwa ze słowem destrukcyjnym jest zawsze `DESTRUCTIVE`; narzędzie, które starter mimo to odrzuci, jest pomijane z logiem, nie zatrzymuje startu.
-  Uwaga dla admina: klasyfikacja niższa niż ryzyko zastępcze (`transition_issue` jako `UPDATE`) daje odmowę lokalną użytkownikom, których gateway przepuścił.
+  Uwaga dla admina: klasyfikacja niższa niż ryzyko zastępcze (np. narzędzie z `destructiveHint: true` jako `UPDATE`; w demo tylko odczyt, więc nie występuje) daje odmowę lokalną użytkownikom, których gateway przepuścił.
 - **Startowy `tools/list` wymaga nagłówka `Authorization`**: mcp-atlassian 0.23.1 odmawia każdego żądania bez niego (`401`), więc jest ustawienie
   `discovery-authorization` (wartość nie jest poświadczeniem niczyim). Narzędzia Jiry pojawiają się w liście tylko, gdy serwer ma w env `JIRA_URL` i
   `JIRA_PERSONAL_TOKEN` (zapychacz `placeholder-never-used`, nieużywany przy wyłączonym `ALLOW_GLOBAL_CRED_FALLBACK`).
@@ -47,11 +47,10 @@ Stan na 2026-11-03: etap 3 M6 zrobiony po stronie repozytorium, nic nie wdrożon
    adaptera `mcp-server-adapter:m6-<sha7>` z raportu). Dwie nowe sieci `internal`: `adapter-foreign` (adapter i mcp-atlassian) oraz `jira-foreign` (mcp-atlassian i **tylko** mock Jiry; fragment
    dopisuje mockowi `jira-foreign` z aliasem `jira.internal`). mcp-atlassian nie może być w `servers` ani w `core`. Kontener obcego serwera ma `read_only`, `cap_drop: [ALL]`,
    `no-new-privileges`, `tmpfs /tmp`, `mem_limit 512m`, `pids_limit 200` (sprawdzone na obrazie; healthcheck na Pythonie z obrazu działa). Obraz adaptera działa jako uid/gid 10001:
-   wolumen `/app/state` musi być dla niego zapisywalny (krok init stosu, osobna linia dla tego wolumenu, bo natywne serwery mają inny uid). Zmienne środowiska jak w natywnym `mcp-jira` plus te z tabeli w README.
+   wolumen `/app/state` musi być dla niego zapisywalny (krok init stosu, osobna linia dla tego wolumenu, bo natywne serwery mają inny uid). Zmienne środowiska jak w natywnym `mcp-jira` plus te z tabeli w README. Healthcheck adaptera: `bash -c "exec 3<>/dev/tcp/127.0.0.1/8443"` (domyślne `/bin/sh` obrazu to dash bez `/dev/tcp`; sprawdzone w jednorazowym kontenerze `--network none` z nasłuchującą klasą Javy: z `bash` przechodzi, bez nasłuchu nie). Mock Jiry jest dla mcp-atlassian osiągalny na całym porcie, także WireMock `/__admin` (basic auth).
 4. **Mock Jiry**: używa `/rest/api/2/myself`, `issue/{key}`, `issue/{key}/comment` (GET i POST), `/field`, `search`, `project`, `transitions`. Mock ma `myself`, `issue`, `search`, `project`, POST
    `comment` i `transitions`; GET `comment` i `/field` dostają 404 (z fałszywą Jirą `get_issue` mimo to działał). `Authorization: Bearer <pat>` zgadza się z mockiem.
-5. **Rejestr i polityki** (klasyfikacja niższa niż ryzyko zastępcze daje odmowę lokalną, patrz README): po starcie 6 wpisów `pending_approval` z `source: adapter`; administrator klasyfikuje je w portalu (`get_issue`, `search`, `get_all_projects`, `get_transitions`: `read`;
-   `add_comment`: `update`; `transition_issue`: do decyzji). Grupy Cedar jak dla Jiry (`mcp-jira-read`, `-write`); nazwy narzędzi bez przedrostka `jira_`.
+5. **Rejestr i polityki** (klasyfikacja niższa niż ryzyko zastępcze daje odmowę lokalną, patrz README): po starcie 4 wpisy `pending_approval` z `source: adapter`; administrator klasyfikuje je w portalu (wszystkie cztery: `read`; od kontraktów 6.3.0 / CC-227 rejestr dopuszcza dla adaptera tylko `READ_ONLY`). Grupy Cedar jak dla Jiry (`mcp-jira-read`, `-write`); nazwy narzędzi bez przedrostka `jira_`.
 6. **Typ poświadczenia** `user-secret` dla `jira` w brokerze (PAT w `X-MCP-Credential`); adapter zamienia go na `Token <PAT>`.
 
 ## Czego potrzebuje ws-10 (mcp-e2e)
