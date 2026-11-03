@@ -54,6 +54,9 @@ public class ForeignMcpClient {
                 .version(HttpClient.Version.HTTP_1_1).connectTimeout(foreign.connectTimeout());
         if (tls != null) {
             builder.sslContext(tls);
+            javax.net.ssl.SSLParameters parameters = new javax.net.ssl.SSLParameters();
+            parameters.setEndpointIdentificationAlgorithm("HTTPS");
+            builder.sslParameters(parameters);
         }
         return builder.build();
     }

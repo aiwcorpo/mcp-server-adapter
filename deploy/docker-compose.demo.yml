@@ -1,0 +1,88 @@
+# Reference fragment for the adapter demo (Jira through sooperset/mcp-atlassian 0.23.1). It is not started by this repository: ws-01
+# merges it into mcp-platform-dev. The adapter takes the place of the native mcp-jira (same server id and network alias), so the
+# gateway must be configured with mcp-jira in adapter mode and the native mcp-jira container must not run at the same time.
+#
+# Variables: ADAPTER_IMAGE (mcp-server-adapter:m6-<sha7>), the same TLS, Redis and policy variables as the native mcp-jira service, and
+# the extra files named below. Nothing in this file is a secret: JIRA_PERSONAL_TOKEN is a placeholder the foreign server never uses.
+services:
+  mcp-atlassian:
+    image: ghcr.io/sooperset/mcp-atlassian@sha256:5b7c9b64d4eb3210cab74be8bf3e6aeea9ed14f3042dc59ba5c5287bd4dbe466
+    pull_policy: never
+    command: ["--transport", "streamable-http", "--port", "8000", "--host", "0.0.0.0"]
+    environment:
+      JIRA_URL: http://jira.internal:8080
+      JIRA_PERSONAL_TOKEN: placeholder-never-used
+      ALLOW_GLOBAL_CRED_FALLBACK: "false"
+      TOOLSETS: all
+      ENABLED_TOOLS: jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions,jira_add_comment,jira_transition_issue
+    # No published port and no membership of the shared "servers" network: only the adapter reaches it, on "adapter-foreign".
+    # ws-01: add here the network on which jira-mock has the alias jira.internal (and only that one); mcp-atlassian talks to Jira from it.
+    networks:
+      adapter-foreign: {}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mcp-jira-adapter:
+    image: ${ADAPTER_IMAGE}
+    pull_policy: never
+    environment:
+      MCP_SERVER_ID: mcp-jira
+      MCP_GATEWAY_JWKS_URI: https://${MCP_GATEWAY_INTERNAL_TLS_NAME}:8443/.well-known/jwks.json
+      MCP_GATEWAY_ISSUER: https://mcp-gateway.internal
+      MCP_CONNECT_URL: https://localhost:${PROXY_TLS_PORT}/connections?system={system}
+      MCP_INTERNAL_URL: https://mcp-jira.internal:8443/mcp
+      MCP_ACCEPTED_CREDENTIAL_TYPES: user-secret
+      # The foreign server, on the private network shared only with this container.
+      MCP_FOREIGN_URL: http://mcp-atlassian:8000
+      MCP_FOREIGN_ALLOW_PLAIN_HTTP: "true"
+      MCP_FOREIGN_AUTHORIZATION_FORMAT: "Token {credential}"
+      MCP_FOREIGN_DISCOVERY_AUTHORIZATION: "Token discovery-only"
+      MCP_ADAPTER_STRIP_PREFIX: jira_
+      MCP_ADAPTER_TOOLS_INCLUDE: jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions,jira_add_comment,jira_transition_issue
+      # Registry channel (C5): the mTLS listener of the gateway and the client certificate CN=mcp-adapter-mcp-jira.
+      MCP_REGISTRY_URL: https://${MCP_GATEWAY_INTERNAL_TLS_NAME}:8443
+      MCP_REGISTRY_TLS_KEYSTORE: /certs/mcp-jira-adapter/registry-client.p12
+      MCP_REGISTRY_SSL_BUNDLE: adapter-registry
+      MCP_TLS_STORE_PASSWORD: ${TLS_STORE_PASSWORD:?run make secrets}
+      MCP_TLS_KEYSTORE: /certs/mcp-jira/keystore.p12
+      MCP_TLS_TRUSTSTORE: /certs/ca/truststore.p12
+      MCP_REDIS_HOST: redis
+      MCP_REDIS_PORT: "6379"
+      MCP_REDIS_USER: mcp-jira
+      MCP_REDIS_PASSWORD: ${REDIS_MCP_JIRA_PASSWORD:?run make secrets}
+      MCP_POLICY_URL: https://policies.internal:8443/policies/main/latest.json
+      MCP_POLICY_KEY_ID: ${POLICY_KEY_MAIN_ID}
+      MCP_POLICY_PUBLIC_KEY_FILE: /keys/${POLICY_KEY_MAIN_ID}.public.pem
+      MCP_POLICY_STATE_DIR: /app/state
+      AIWCORPO_MCP_PLATFORM_POLICY_SSL_BUNDLE: mcp-internal-ca
+      # Only for the dev stack, as for the native servers (see mcp-platform-dev): never outside it.
+      SPRING_PROFILES_ACTIVE: devstack
+      MCP_DEVSTACK_ACKNOWLEDGED: "true"
+      AIWCORPO_MCP_PLATFORM_DEVSTACK_ACKNOWLEDGED: "true"
+      AIWCORPO_MCP_PLATFORM_POLICY_ALLOW_TEST_KEYS: "true"
+    volumes:
+      - mcp-jira-state:/app/state
+      - ${POLICY_KEYS_DIR}/${POLICY_KEY_MAIN_ID}.public.pem:/keys/${POLICY_KEY_MAIN_ID}.public.pem:ro
+      - ./certs/mcp-jira/keystore.p12:/certs/mcp-jira/keystore.p12:ro
+      - ./certs/mcp-jira-adapter/registry-client.p12:/certs/mcp-jira-adapter/registry-client.p12:ro
+      - ./certs/ca/truststore.p12:/certs/ca/truststore.p12:ro
+    networks:
+      servers:
+        aliases: [mcp-jira.internal]
+      adapter-foreign: {}
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8443"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      mcp-atlassian: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+networks:
+  # Internal: no route out, and no container but the adapter and mcp-atlassian on it.
+  adapter-foreign:
+    internal: true

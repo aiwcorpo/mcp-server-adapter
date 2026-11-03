@@ -6,6 +6,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.util.List;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.beans.factory.ObjectProvider;
@@ -60,6 +61,13 @@ class AdapterConfiguration {
         }
     }
 
+    /** The certificate of the gateway must name the host it is reached by; set explicitly instead of relying on a default of the HTTP client. */
+    private static SSLParameters hostnameChecked() {
+        SSLParameters parameters = new SSLParameters();
+        parameters.setEndpointIdentificationAlgorithm("HTTPS");
+        return parameters;
+    }
+
     @Bean
     ForeignTools foreignTools(ForeignMcpClient client, AdapterProperties properties) {
         List<ForeignTool> tools = ForeignCatalog.discover(client, properties);
@@ -91,6 +99,7 @@ class AdapterConfiguration {
                 .version(HttpClient.Version.HTTP_1_1).connectTimeout(registry.requestTimeout());
         if (registry.sslBundle() != null && !registry.sslBundle().isBlank()) {
             builder.sslContext(bundles.getObject().getBundle(registry.sslBundle()).createSslContext());
+            builder.sslParameters(hostnameChecked());
         }
         return new ManifestSubmitter(registry, platform.getServerId(), manifest, builder.build(), meters.getIfAvailable());
     }

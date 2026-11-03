@@ -42,7 +42,9 @@
         <java.version>25</java.version>
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <mcp-platform.version>3.0.0-beta-12</mcp-platform.version>
+        <mcp-platform.version>3.0.0-beta-13</mcp-platform.version>
+        <!-- The test against the real mcp-atlassian image needs a container and a fake Jira on the host: profile real-image, see README. -->
+        <real.image.exclude>**/RealImage*</real.image.exclude>
     </properties>
 
     <dependencyManagement>
@@ -85,6 +87,15 @@
         </repository>
     </distributionManagement>
 
+    <profiles>
+        <profile>
+            <id>real-image</id>
+            <properties>
+                <real.image.exclude>**/NoSuchTest</real.image.exclude>
+            </properties>
+        </profile>
+    </profiles>
+
     <build>
         <finalName>mcp-server-adapter</finalName>
         <plugins>
@@ -111,6 +122,14 @@
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>${real.image.exclude}</exclude>
+                    </excludes>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
