@@ -6,7 +6,7 @@ zna platforma. Adapter robi to za niego. Przyjmuje ruch wyłącznie od gatewaya 
 przy starcie odczytuje listę narzędzi obcego serwera i wysyła ją do rejestru jako manifest, a wywołania przekazuje z poświadczeniem
 użytkownika, który je zainicjował.
 
-Stos: Java 25, Spring Boot 4.1.0, `mcp-platform-starter` 3.0.0-beta-13, kontrakty `mcp-contracts` 6.2.1 (CC-193, CC-206, CC-207).
+Stos: Java 25, Spring Boot 4.1.0, `mcp-platform-starter` 3.0.0-beta-14, kontrakty `mcp-contracts` 6.3.2 (CC-193, CC-206, CC-207, CC-226, CC-227).
 Licencja Apache-2.0. Wersja: 0.1.0-SNAPSHOT (stan i plan w `STATUS.md`).
 
 ## Dla kogo
@@ -32,7 +32,7 @@ klient MCP -> gateway --mTLS + JWT C2 + X-MCP-Credential--> adapter --HTTP + Aut
    dopóki rejestr nie odpowie `200`. Wywołanie niczego nie zatwierdza: każde narzędzie jest `pending_approval`, a administrator
    nadaje `risk` i `action` przy zatwierdzaniu w portalu. Niesklasyfikowane narzędzie gateway ukrywa i odmawia jako `tool_disabled`.
 3. **Wywołanie.** Starter sprawdza wywołującego (certyfikat gatewaya, JWT związany z żądaniem i z nazwą narzędzia), waliduje
-   argumenty względem opublikowanego schematu i uruchamia lokalną kontrolę polityki. Dopiero potem adapter otwiera sesję MCP do
+   argumenty względem opublikowanego schematu i uruchamia lokalną kontrolę polityki z klasyfikacją administratora (niżej). Dopiero potem adapter otwiera sesję MCP do
    obcego serwera z nagłówkiem `Authorization` zbudowanym z poświadczenia użytkownika (`X-MCP-Credential`), przekazuje argumenty i
    `X-Request-Id` żądania, zamyka sesję i oddaje wynik jako dane niezaufane.
 
@@ -80,39 +80,39 @@ opis każdego argumentu, napisy w `enum` i `const` oraz nazwy właściwości są
 zerowej szerokości, tekst w `enum` dłuższy niż 256 znaków albo nazwa spoza `^[A-Za-z0-9_.-]{1,64}$` oznacza pominięcie całego narzędzia (opis
 argumentu dłuższy niż 1000 znaków jest obcinany). Rejestr przypina całość hashem, więc administrator zatwierdza słowa, które model przeczyta, i widzi je w całości.
 
-### Ryzyko lokalne a klasyfikacja administratora
+### Klasyfikacja administratora a ryzyko zastępcze
 
-Starter wymaga ryzyka każdego narzędzia (do audytu, do podpowiedzi `readOnlyHint` i `destructiveHint` w `tools/list` oraz do lokalnej kontroli polityki
-`call`), a adapter nie klasyfikuje. Dlatego liczy ryzyko zastępcze z podpowiedzi obcego serwera, w jedną stronę błędu (niepewne to `DESTRUCTIVE`):
-`readOnlyHint: true` daje `READ_ONLY`, jawne `destructiveHint: false` daje `UPDATE`, wszystko inne (brak podpowiedzi, `destructiveHint: true`) daje
-`DESTRUCTIVE`. Nazwa ze słowem destrukcyjnym (`delete`, `remove`, `reset`, `clear`, `revoke` i inne z listy startera) jest zawsze `DESTRUCTIVE`, bez względu na
-podpowiedzi. Gdyby starter mimo to odmówił rejestracji jednego narzędzia, adapter pomija je z logiem i startuje z resztą, zamiast
-zatrzymywać się przez słowo obcego serwera.
+Od startera 3.0.0-beta-14 i kontraktów 6.3.2 (CC-226, CC-227) gateway wysyła do adaptera w każdym `tools/call` klasyfikację administratora z rejestru, jako claimy
+`mcp_risk` i `mcp_action` wewnętrznego JWT. Adapter działa w trybie odbiorcy `adapter` (`internal-jwt.receiver-mode: adapter`):
 
-To ryzyko **niczego nie rozstrzyga**: gateway autoryzuje według klasyfikacji administratora z rejestru i nigdy nie czyta podpowiedzi (CC-193, pkt 5);
-narzędzie niesklasyfikowane tam jest ukryte i odmawiane jako `tool_disabled`. Lokalna kontrola jest drugą, słabszą barierą (koniunkcją z gatewayem, więc
-dostęp jest najwyżej taki, jaki daje gateway). Skutki, o których muszą wiedzieć administrator i zespół SIEM:
+- **Brak klasyfikacji to odmowa.** `tools/call` bez `mcp_risk` i `mcp_action` (starszy gateway, niezgodny tryb) to `401` z powodem `classification_missing`; robi to starter, adapter nic nie
+  przekazuje. Claimy bez `tool`, tylko jeden z nich albo niezgodna para (np. `READ_ONLY` z `delete`) to `401 invalid_claims`.
+- **Decyzja lokalna używa klasyfikacji, nie podpowiedzi.** Lokalna kontrola polityki `call` (Cedar, ta sama paczka co w gatewayu) dostaje ryzyko i akcję z claimów
+  (`ClassifiedToolRiskRegistry` podmienia je w czasie wywołania), więc narzędzie sklasyfikowane jako `READ_ONLY` wymaga grupy odczytu, także gdy obcy serwer uważa je za zapis.
+- **Wartość inna niż `READ_ONLY` jest odmawiana lokalnie** (CC-227: adapter jest tylko do odczytu, bo narzędzia obcego serwera nie mają `resourceRefs`, więc zapis nie ma zakresu zasobów).
+  Starter loguje to (`event=adapter_classification_not_read_only`) i liczy (`mcp_adapter_classification_not_read_only_total{risk}`); adapter dodatkowo odmawia (`access_denied`, wywołanie nie dociera do obcego
+  serwera), loguje `event=adapter_local_denied` i liczy `mcp_adapter_local_denied_total{reason}`. Gateway takiej wartości po CC-227 nie wyśle, więc zdarzenie znaczy gateway niezgodny z tą wersją.
+- **Rozbieżność z podpowiedziami jest widoczna.** Gdy klasyfikacja różni się od ryzyka z podpowiedzi obcego serwera (administrator uznał za odczyt narzędzie, które serwer oznacza jako zapis), adapter przepuszcza
+  (decyduje administrator), ale loguje `event=adapter_classification_diverges tool=... classified=... hints=...` i liczy `mcp_adapter_classification_divergence_total{classified,hints}` (zalecenie W8):
+  przegląd rozbieżności to przegląd tego, czy administrator nie podniósł zapisu do odczytu.
 
-- **Podpowiedzi w definicji nie są oryginalnymi podpowiedziami obcego serwera.** Starter nadpisuje `readOnlyHint` i `destructiveHint` w `tools/list` wartościami z
-  ryzyka zastępczego i gubi pozostałe podpowiedzi (`idempotentHint`, `openWorldHint`; `title` zostaje). Manifest i `definitionHash` obejmują definicję taką, jaką adapter
-  wystawia, więc **hash pośrednio zależy od podpowiedzi obcego serwera i od tej reguły**. Dla narzędzia, które nie zgłosiło żadnej podpowiedzi, administrator zobaczy
-  `destructiveHint: true`, którego obcy serwer nie zgłosił. To tylko podpowiedzi (nikt ich nie czyta jako ryzyka), ale nie należy ich brać za dane obcego serwera.
-- **Uwaga dla administratora przy klasyfikacji:** klasyfikacja niższa niż ryzyko zastępcze (np. narzędzie z `destructiveHint: true` jako `UPDATE`; w demo, które ma tylko narzędzia odczytu, to nie występuje) sprawia,
-  że gateway przepuści użytkownika z grupą zapisu, a adapter odmówi mu lokalnie (`access_denied` w audycie adaptera). Zawodzi to bezpiecznie i widocznie; żeby narzędzie działało,
-  grupa użytkownika musi spełniać obie kontrole albo narzędzie zostaje sklasyfikowane zgodnie z ryzykiem zastępczym. Klasyfikacja wyższa niż ryzyko zastępcze działa bez uwag
-  (lokalna kontrola jest wtedy luźniejsza).
-- **Kłamliwe `readOnlyHint` osłabia tylko drugą barierę.** Gateway nadal wymusza grupę i TOTP z klasyfikacji administratora.
-- **Audyt:** zdarzenie `tool_call` adaptera ma `risk` zastępcze, który może się różnić od `risk` w zdarzeniu gatewaya z tym samym `requestId`. Reguły SIEM łączą po
-  `requestId` i traktują `risk` gatewaya jako źródło prawdy.
+**Ryzyko zastępcze zostaje tylko tam, gdzie starter wymaga go przed pierwszym wywołaniem**: przy rejestracji narzędzia, do podpowiedzi `readOnlyHint` i `destructiveHint` w `tools/list`, a więc do definicji
+w manifeście i do `definitionHash`. Liczy się z podpowiedzi obcego serwera, w jedną stronę błędu (niepewne to `DESTRUCTIVE`): `readOnlyHint: true` daje `READ_ONLY`, jawne `destructiveHint: false` daje `UPDATE`,
+wszystko inne daje `DESTRUCTIVE`; nazwa ze słowem destrukcyjnym (`delete`, `remove`, `reset`, `clear`, `revoke` i inne z listy startera) jest zawsze `DESTRUCTIVE`. Narzędzie, które starter mimo to odrzuci przy
+rejestracji, jest pomijane z logiem, a adapter startuje z resztą. Skutki dla administratora i dla SIEM:
 
-Docelowo lepiej, by gateway przekazywał klasyfikację z rejestru w JWT, a starter jej używał; to zmiana kontraktu, poza M6.
+- **Podpowiedzi w definicji nie są oryginalnymi podpowiedziami obcego serwera.** Starter nadpisuje `readOnlyHint` i `destructiveHint` w `tools/list` wartościami z ryzyka zastępczego i gubi
+  `idempotentHint` i `openWorldHint` (`title` zostaje). Manifest i `definitionHash` obejmują definicję taką, jaką adapter wystawia, więc **hash pośrednio zależy od podpowiedzi obcego serwera i od tej reguły**.
+  Dla narzędzia, które nie zgłosiło żadnej podpowiedzi, administrator zobaczy `destructiveHint: true`, którego obcy serwer nie zgłosił. To tylko podpowiedzi: nikt nie czyta ich jako ryzyka.
+- **Audyt.** Zdarzenie `tool_call` adaptera ma `risk` zastępcze (starter zapisuje je z rejestracji), a zdarzenia odmowy polityki mają ryzyko z klasyfikacji. `risk` w zdarzeniu gatewaya z tym samym
+  `requestId` jest źródłem prawdy; reguły SIEM łączą po `requestId`.
 
 ## Instalacja
 
 Obraz: `ghcr.io/aiwcorpo/mcp-server-adapter:<wersja>` (po wydaniu; workflow `.github/workflows/release.yml`). Lokalnie:
 
 ```bash
-ci/run.sh verify   # JDK 25, ~/.m2 z mcp-platform-starter 3.0.0-beta-13 i mcp-contracts 6.2.1; 94 testy, żaden pominięty
+ci/run.sh verify   # JDK 25, ~/.m2 z mcp-platform-starter 3.0.0-beta-14 i mcp-contracts 6.3.2; 99 testów, żaden pominięty
 ci/run.sh image    # docker build, tag mcp-server-adapter:m6-<sha7>; nic nie wypycha
 ```
 
@@ -161,7 +161,7 @@ Konfiguracja obcego serwera (pełny fragment Compose: `deploy/docker-compose.dem
   `mcp-platform-dev/mocks` obsługuje (`/myself`, `issue`, `search`, `project`, `transitions`). Od kontraktów 6.3.0 (CC-227) rejestr klasyfikuje narzędzie adaptera
   wyłącznie jako `READ_ONLY` (narzędzia obcego serwera nie mają `resourceRefs`, więc zapis nie ma zakresu zasobów), dlatego demo nie włącza żadnego narzędzia zapisu
   (`jira_add_comment`, `jira_transition_issue`, `jira_delete_issue` i reszta z 93 narzędzi są wyłączone). Zapisujące narzędzie w `ENABLED_TOOLS` zostałoby w rejestrze
-  bez dozwolonej klasyfikacji, a więc ukryte (`tool_disabled`). Przejście starterowego adaptera na kontrakty 6.3.0 jest w następnej fali.
+  bez dozwolonej klasyfikacji, a więc ukryte (`tool_disabled`).
 - `JIRA_URL` na system (mock), `JIRA_PERSONAL_TOKEN=placeholder-never-used` jako zapychacz. Bez niego serwer nie pokazuje narzędzi Jiry w `tools/list`
   (sprawdzone na obrazie). Wartość nigdy nie jest użyta, bo `ALLOW_GLOBAL_CRED_FALLBACK` jest wyłączone (jest domyślnie wyłączone; fragment ustawia je jawnie na `false`):
   wywołanie bez poświadczenia w nagłówku kończy się tam `401`.
@@ -186,9 +186,9 @@ docker run -d --rm --name adapter-probe -p 127.0.0.1:18931:8000 \
 
 ## Testy
 
-`ci/run.sh verify` (94 testy, bez kontenerów i bez sieci poza pętlą zwrotną): `SchemaTightenerTest` (w tym prawdziwe schematy z `tools/list` obrazu 0.23.1, zapisane w
+`ci/run.sh verify` (99 testów, bez kontenerów i bez sieci poza pętlą zwrotną): `SchemaTightenerTest` (w tym prawdziwe schematy z `tools/list` obrazu 0.23.1, zapisane w
 `src/test/resources`), `ForeignMcpClientTest` i `ForeignCatalogTest` (strumień zdarzeń i JSON, 401/403/5xx, przekierowanie, limit odpowiedzi, czekanie na serwer),
-`CallToolTest` (poświadczenie, `requestId`, walidacja przed przekazaniem, wynik jako dane, stałe błędy, lokalna kontrola grup), `GatewayOnlyAccessTest`,
+`CallToolTest` (poświadczenie, `requestId`, walidacja przed przekazaniem, wynik jako dane, stałe błędy, lokalna kontrola grup), `GatewayOnlyAccessTest` (także brak, niepełna i niezgodna klasyfikacja w JWT),
 `ToolListTest`, `ManifestTest` i `AdapterManifestTest` (reguły rejestru, `DefinitionHash`, odtworzony hash wektora `manifests/valid-adapter` z kontraktów),
 `ManifestSubmissionTest` (ścieżka, ciało, ponowienia), `ProductionConfigurationTest`. Atrapa obcego serwera (`StubForeignServer`) i rejestru (`StubRegistry`) są w katalogu testów.
 

@@ -173,12 +173,46 @@ class CallToolTest extends ServerTestSupport {
     }
 
     @Test
-    void aCallerWithoutTheGroupOfTheToolIsRefusedLocallyBeforeTheForeignServer() {
+    void theLocalDecisionUsesTheClassificationOfTheAdministratorNotTheHintsOfTheForeignServer() {
+        // add_comment is a write for the foreign server (substitute risk UPDATE); the administrator classified it READ_ONLY, so the
+        // read group is what the local check asks for.
+        double before = divergences("READ_ONLY", "UPDATE");
         try (McpSyncClient reader = clientWithToken(ServerTestSupport::reader, PAT)) {
             assertThat(call(reader, "get_issue", Map.of("issue_key", "ABC-1")).isError()).isFalse();
-            assertError(call(reader, "add_comment", Map.of("issue_key", "ABC-1", "body", "hello")), "access_denied");
+            assertThat(call(reader, "add_comment", Map.of("issue_key", "ABC-1", "body", "hello")).isError()).isFalse();
         }
-        assertThat(FOREIGN.calls()).extracting(StubForeignServer.Call::tool).containsExactly("jira_get_issue");
+        assertThat(FOREIGN.calls()).extracting(StubForeignServer.Call::tool).containsExactly("jira_get_issue", "jira_add_comment");
+        assertThat(divergences("READ_ONLY", "UPDATE")).isEqualTo(before + 1);
+    }
+
+    @Test
+    void aCallerWithoutTheReadGroupIsRefusedLocallyBeforeTheForeignServer() {
+        try (McpSyncClient nobody = clientWithToken(user -> user.username("jkowalski").groups(List.of("mcp-jira-write")), PAT)) {
+            assertError(call(nobody, "get_issue", Map.of("issue_key", "ABC-1")), "access_denied");
+        }
+        assertThat(FOREIGN.calls()).isEmpty();
+    }
+
+    @Test
+    void aClassificationOtherThanReadOnlyIsRefusedLocallyEvenForAnEditor() {
+        double before = localDenials();
+        for (String[] classification : new String[][] {{"UPDATE", "update"}, {"DESTRUCTIVE", "delete"}, {"UPDATE", "admin"}}) {
+            try (McpSyncClient editor = clientClassifiedAs(ServerTestSupport::editor, PAT, classification[0], classification[1])) {
+                assertError(call(editor, "add_comment", Map.of("issue_key", "ABC-1", "body", "hello")), "access_denied");
+            }
+        }
+        assertThat(FOREIGN.calls()).isEmpty();
+        // DESTRUCTIVE is already refused by the Cedar check (an editor has no destructive group), before the interceptor sees it.
+        assertThat(localDenials()).isEqualTo(before + 2);
+    }
+
+    @Test
+    void aCallWithoutTheClassificationIsRefusedByTheStarterNotForwarded() {
+        try (McpSyncClient client = clientClassifiedAs(ServerTestSupport::editor, PAT, null, null)) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> call(client, "get_issue", Map.of("issue_key", "ABC-1")))
+                    .hasMessageContaining("Authorization");
+        }
+        assertThat(FOREIGN.calls()).isEmpty();
     }
 
     @Autowired
@@ -217,6 +251,16 @@ class CallToolTest extends ServerTestSupport {
         assertThat(String.join("\n", lines)).doesNotContain(PAT_VALUE, "jira.corp.test", "ABC-404 at");
         assertThat(counter("result_error")).isEqualTo(before + 1);
         assertThat(counter("http_5xx")).isGreaterThanOrEqualTo(1);
+    }
+
+    private double divergences(String classified, String hints) {
+        var counter = meters.find("mcp_adapter_classification_divergence_total").tag("classified", classified).tag("hints", hints).counter();
+        return counter == null ? 0 : counter.count();
+    }
+
+    private double localDenials() {
+        var counter = meters.find("mcp_adapter_local_denied_total").tag("reason", "classification_not_read_only").counter();
+        return counter == null ? 0 : counter.count();
     }
 
     private double counter(String reason) {

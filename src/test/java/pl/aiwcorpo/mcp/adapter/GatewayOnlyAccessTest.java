@@ -47,6 +47,27 @@ class GatewayOnlyAccessTest extends ServerTestSupport {
     }
 
     @Test
+    void aToolCallWithoutTheClassificationOfTheAdministratorIs401ButWithItPasses() throws Exception {
+        TestGateway.Minted without = GATEWAY.user().username("jkowalski").groups(java.util.List.of(READ_GROUP)).tool("get_issue").mint();
+        HttpResponse<String> refused = post(GET_ISSUE, without.headers());
+        assertThat(refused.statusCode()).isEqualTo(401);
+        assertThat(refused.body()).doesNotContain("classification");
+
+        TestGateway.Minted partial = GATEWAY.user().tool("get_issue").extraClaim("mcp_risk", "READ_ONLY").mint();
+        assertThat(post(GET_ISSUE, partial.headers()).statusCode()).isEqualTo(401);
+        TestGateway.Minted inconsistent = GATEWAY.user().tool("get_issue").extraClaim("mcp_risk", "READ_ONLY")
+                .extraClaim("mcp_action", "delete").mint();
+        assertThat(post(GET_ISSUE, inconsistent.headers()).statusCode()).isEqualTo(401);
+        assertThat(FOREIGN.calls()).isEmpty();
+    }
+
+    @Test
+    void theClassificationWithoutAToolIsRefusedToo() throws Exception {
+        TestGateway.Minted noTool = GATEWAY.user().extraClaim("mcp_risk", "READ_ONLY").extraClaim("mcp_action", "read").mint();
+        assertThat(post(INITIALIZE, noTool.headers()).statusCode()).isEqualTo(401);
+    }
+
+    @Test
     void aTokenSignedByTheTestKeysOnlyPassesBecauseTheDevProfileAllowsIt() throws Exception {
         assertThat(post(INITIALIZE, GATEWAY.user().mint().headers()).statusCode()).isEqualTo(200);
     }

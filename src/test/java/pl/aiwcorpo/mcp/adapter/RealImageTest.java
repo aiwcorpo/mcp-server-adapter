@@ -51,7 +51,7 @@ class RealImageTest {
     private McpSyncClient client(String pat) {
         HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder("http://127.0.0.1:" + port)
                 .endpoint("/mcp").openConnectionOnStartup(false)
-                .httpRequestCustomizer(GATEWAY.asGateway(user -> user.username("jkowalski").groups(List.of("mcp-jira-read", "mcp-jira-write")), pat))
+                .httpRequestCustomizer(AdapterGateway.asGateway(GATEWAY, user -> user.username("jkowalski").groups(List.of("mcp-jira-read", "mcp-jira-write")), pat))
                 .build();
         McpSyncClient client = McpClient.sync(transport).requestTimeout(Duration.ofSeconds(30)).build();
         client.initialize();

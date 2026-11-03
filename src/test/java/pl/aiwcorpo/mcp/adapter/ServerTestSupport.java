@@ -95,10 +95,15 @@ abstract class ServerTestSupport {
     }
 
     McpSyncClient clientWithToken(Consumer<TestGateway.Token> user, String credential) {
+        return clientClassifiedAs(user, credential, "READ_ONLY", "read");
+    }
+
+    /** A client whose tools/call carry the given classification of the administrator; {@code risk} null leaves it out. */
+    McpSyncClient clientClassifiedAs(Consumer<TestGateway.Token> user, String credential, String risk, String action) {
         HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(baseUrl())
                 .endpoint(ENDPOINT)
                 .openConnectionOnStartup(false)
-                .httpRequestCustomizer(GATEWAY.asGateway(user, credential))
+                .httpRequestCustomizer(AdapterGateway.asGateway(GATEWAY, user, credential, risk, action))
                 .build();
         McpSyncClient client = McpClient.sync(transport).requestTimeout(Duration.ofSeconds(20)).build();
         client.initialize();

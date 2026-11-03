@@ -29,6 +29,9 @@ aiwcorpo:
       # are served by an adapter; this value must be one of them.
       server-id: ${MCP_SERVER_ID:mcp-jira}
       internal-jwt:
+        # The sidecar of an adapter (CC-226): tools/call must carry the classification of the administrator (mcp_risk, mcp_action), else 401
+        # classification_missing. A native server refuses those claims.
+        receiver-mode: adapter
         issuer: ${MCP_GATEWAY_ISSUER:https://mcp-gateway.internal}
         jwks-uri: ${MCP_GATEWAY_JWKS_URI:}
       credential:

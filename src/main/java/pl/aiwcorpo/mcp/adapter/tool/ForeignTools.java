@@ -11,6 +11,7 @@ import pl.aiwcorpo.mcp.adapter.foreign.ForeignMcpClient;
 import pl.aiwcorpo.mcp.adapter.foreign.ForeignTool;
 import pl.aiwcorpo.mcp.platform.error.ToolErrorMapping;
 import pl.aiwcorpo.mcp.platform.guard.ToolRiskRegistry;
+import pl.aiwcorpo.mcp.platform.observability.ToolCallInterceptor;
 
 /** The tools the adapter publishes, and the entry points to the package-private callback, result and error classes. */
 public record ForeignTools(List<ForeignTool> tools) {
@@ -39,6 +40,10 @@ public record ForeignTools(List<ForeignTool> tools) {
             throw new IllegalStateException("the starter accepts none of the " + tools.size() + " tools of the foreign server");
         }
         return accepted;
+    }
+
+    public static ToolCallInterceptor classification(MeterRegistry meters) {
+        return new ClassificationInterceptor(meters);
     }
 
     public static ToolErrorMapping errors() {
