@@ -1,6 +1,10 @@
 # STATUS: mcp-server-adapter (ws-13)
 
-Stan na 2026-11-03: etap 3 M6 zrobiony po stronie repozytorium, nic nie wdrożone. Wersja 0.1.0-SNAPSHOT, starter 3.0.0-beta-14, kontrakty 6.3.2.
+Stan na 2026-11-03: etap 3 M6 zrobiony po stronie repozytorium, nic nie wdrożone. Wersja 1.0.0, starter 3.0.0, kontrakty 6.3.2.
+
+## Wersja 1.0.0 (2026-11-04)
+
+Wersja projektu `1.0.0`, `mcp-platform.version` 3.0.0, kontrakty 6.3.2. Usunięte pozostałości GitHub Packages: `distributionManagement`, `.ci/settings.xml`, `MCP_MAVEN_REPOSITORY_*` w `ci/run.sh`, workflowach, `.gitlab-ci.yml`, `Jenkinsfile`, README i CONTRIBUTING; job CI ma tylko `contents: read`, bez tokenu. Obraz ma etykiety `org.opencontainers.image.source` i `licenses`. `make ci`: 99 testów, zielone. CHANGELOG: jeden wpis 1.0.0. Obraz `mcp-server-adapter:m6-<sha>` budowany po commicie (tag w raporcie).
 
 ## Zrobione
 

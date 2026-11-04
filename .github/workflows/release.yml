@@ -2,9 +2,9 @@
 # as a workflow artifact. Runs only on a v* tag; nothing is published from branches. Not run yet: the repository and the
 # organization packages do not exist at the time of writing.
 #
-# Two jobs, so that no job with a write permission runs a build tool: build has contents: read and packages: read (the platform
-# artifacts mcp-platform-starter and mcp-contracts are read with the GITHUB_TOKEN of the run; the packages must grant access to
-# this repository), runs the tests, mvnw and docker build, and hands the image over as a docker save tarball. publish has
+# Two jobs, so that no job with a write permission runs a build tool: build has contents: read (the platform artifacts
+# mcp-platform-starter and mcp-contracts come from Maven Central), runs the tests, mvnw and docker build, and hands the image
+# over as a docker save tarball. publish has
 # packages: write, no checkout and no cache; it only runs docker load and docker push, with the token in the environment of
 # the push step.
 name: release
@@ -25,11 +25,6 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
-      packages: read
-    env:
-      MCP_MAVEN_REPOSITORY_URL: https://maven.pkg.github.com/aiwcorpo/mcp-contracts
-      MCP_MAVEN_REPOSITORY_USER: ${{ github.actor }}
-      MCP_MAVEN_REPOSITORY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -45,7 +40,7 @@ jobs:
       - name: Verify (tests, none skipped)
         run: ci/run.sh verify
       - name: Build the jar and the SBOM
-        run: ./mvnw -B -s .ci/settings.xml -DskipTests package org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom
+        run: ./mvnw -B -DskipTests package org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom
       - name: Build the image and save it
         run: |
           image="ghcr.io/aiwcorpo/mcp-server-adapter:${GITHUB_REF_NAME#v}"

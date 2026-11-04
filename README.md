@@ -11,7 +11,7 @@ It is for platform operators who want to connect a ready-made MCP server (open s
 systems: `jira`, `confluence`, `gitlab`, `servicedesk`, `opensearch`. It is one container image configured through environment
 variables, not a library or a template. A server for a sixth system needs a contract change.
 
-Stack: Java 25, Spring Boot 4.1.0, `mcp-platform-starter` 3.0.0-beta-14 (the version in `pom.xml`), `mcp-contracts` 6.3.2.
+Stack: Java 25, Spring Boot 4.1.0, `mcp-platform-starter` 3.0.0 (the version in `pom.xml`), `mcp-contracts` 6.3.2.
 License: Apache-2.0 ([LICENSE](LICENSE), [NOTICE](NOTICE)). Current state and plan: [STATUS.md](STATUS.md) (in Polish).
 Changes: [CHANGELOG.md](CHANGELOG.md). Contributing: [CONTRIBUTING.md](CONTRIBUTING.md). Vulnerabilities: [SECURITY.md](SECURITY.md).
 
@@ -58,8 +58,7 @@ characters in names, enums or argument descriptions.
 ## Build and test
 
 JDK 25 is required. The tests need no container runtime: the foreign server and the registry are stubs inside the test JVM.
-The platform artifacts (`mcp-platform-starter`, `mcp-contracts`) must be in `~/.m2` or in the registry set in
-`MCP_MAVEN_REPOSITORY_URL`, `MCP_MAVEN_REPOSITORY_USER` and `MCP_MAVEN_REPOSITORY_PASSWORD` (see `.ci/settings.xml`).
+The platform artifacts (`mcp-platform-starter`, `mcp-contracts`) come from Maven Central; no registry login is needed.
 Linux and macOS with bash 3.2 or newer; on Windows use WSL2.
 
 ```bash

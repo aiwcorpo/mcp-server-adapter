@@ -1,7 +1,6 @@
 # Thin wrapper: all logic is in ci/run.sh, which also runs in a developer's shell.
 # The tests need no container runtime, so verify runs on any runner; only the image job of the default branch needs the Docker
-# socket (runner tagged docker-socket). CI/CD variables MCP_MAVEN_REPOSITORY_URL, _USER, _PASSWORD: deploy token with
-# read_package_registry, masked.
+# socket (runner tagged docker-socket). The platform artifacts come from Maven Central, so no credentials are needed.
 stages:
   - verify
   - image

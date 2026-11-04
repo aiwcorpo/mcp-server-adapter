@@ -11,7 +11,7 @@
 
     <groupId>pl.aiwcorpo.mcp.adapter</groupId>
     <artifactId>mcp-server-adapter</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>1.0.0</version>
     <packaging>jar</packaging>
     <name>mcp-server-adapter</name>
     <description>Sidecar that puts a foreign MCP server behind the platform gateway.</description>
@@ -42,7 +42,7 @@
         <java.version>25</java.version>
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <mcp-platform.version>3.0.0-beta-14</mcp-platform.version>
+        <mcp-platform.version>3.0.0</mcp-platform.version>
         <!-- The test against the real mcp-atlassian image needs a container and a fake Jira on the host: profile real-image, see README. -->
         <real.image.exclude>**/RealImage*</real.image.exclude>
     </properties>
@@ -78,14 +78,6 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <distributionManagement>
-        <repository>
-            <id>github</id>
-            <name>GitHub Packages (aiwcorpo/mcp-server-adapter)</name>
-            <url>https://maven.pkg.github.com/aiwcorpo/mcp-server-adapter</url>
-        </repository>
-    </distributionManagement>
 
     <profiles>
         <profile>

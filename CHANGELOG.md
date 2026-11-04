@@ -2,9 +2,12 @@
 
 Format: SemVer versions, newest first.
 
-## 0.1.0 - in preparation
+## 1.0.0
 
-- Sidecar of a foreign MCP server on `mcp-platform-starter` 3.0.0-beta-14 and contracts 6.3.2 (CC-193, CC-206, CC-207, CC-226, CC-227).
+First public release. Built on `mcp-platform-starter` 3.0.0 and `mcp-contracts` 6.3.2 (CC-193, CC-206, CC-207, CC-226, CC-227).
+
+- Sidecar that puts a foreign MCP server behind the gateway: it accepts only gateway traffic (mTLS and the internal JWT) and forwards
+  calls with the credential of the calling user.
 - Reads `tools/list` of the foreign server at start (waiting for it), rewrites schemas into closed and bounded ones, skips tools that cannot
   be bounded, supports a name prefix and a list of allowed tools.
 - C6 manifest with `source: adapter`, built from the tool list the adapter exposes and submitted with `submitAdapterManifest` over mTLS
