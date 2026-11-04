@@ -6,7 +6,7 @@ different contract starts as a `proposed` entry in `CONTRACT_CHANGES.md` of that
 ## Setup
 
 JDK 25. Linux and macOS with bash 3.2 or newer; Windows only through WSL2. The `mcp-platform-starter` and `mcp-contracts` artifacts must be
-in `~/.m2` or in the registry named by `MCP_MAVEN_REPOSITORY_URL` (see the README, "Instalacja").
+in `~/.m2` or in the registry named by `MCP_MAVEN_REPOSITORY_URL` (see the README, "Build and test").
 
 ```bash
 ci/run.sh verify     # text checks, then clean verify; the same script runs in CI

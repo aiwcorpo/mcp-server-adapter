@@ -1,5 +1,5 @@
 # Base configuration is the production one: mTLS from the gateway, internal JWT, jti store in Redis.
-# Everything that differs per environment comes from environment variables (README, "Konfiguracja").
+# Everything that differs per environment comes from environment variables (README, "Configuration").
 # The 'dev' profile (tests, see application-dev.yml) only turns off TLS; the other development relaxations come from
 # TestGateway and the starter refuses them outside 'dev'.
 server:

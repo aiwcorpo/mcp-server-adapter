@@ -1,20 +1,22 @@
 # Changelog
 
-Format: wersje SemVer; kolejność od najnowszej.
+Format: SemVer versions, newest first.
 
-## 0.1.0 - w przygotowaniu
+## 0.1.0 - in preparation
 
-- Sidecar obcego serwera MCP na `mcp-platform-starter` 3.0.0-beta-14 i kontraktach 6.3.2 (CC-193, CC-206, CC-207, CC-226, CC-227).
-- Odczyt `tools/list` obcego serwera przy starcie (z oczekiwaniem), przepisanie schematów na zamknięte i ograniczone, pominięcie narzędzi,
-  których nie da się ograniczyć, przedrostek nazw i lista dozwolonych narzędzi.
-- Manifest C6 z `source: adapter` budowany z listy narzędzi, którą adapter wystawia; wysyłany operacją `submitAdapterManifest` przez mTLS
-  (CN `mcp-adapter-<serverId>`), z ponawianiem.
-- `tools/call`: poświadczenie użytkownika w nagłówku w konfigurowalnym formacie (domyślnie `Authorization: Token <PAT>`), sesja na wywołanie,
-  walidacja argumentów przed przekazaniem, wynik jako `UntrustedText`, stały `not_found_or_denied`, `X-Request-Id` do obcego serwera.
-- Demo: `sooperset/mcp-atlassian` 0.23.1 (MIT), obraz przypięty po digeście, szczegóły w README.
-- Tryb odbiorcy `adapter` (CC-226): decyzja lokalna z klasyfikacji administratora w JWT (`mcp_risk`, `mcp_action`), brak klasyfikacji to `401`, wartość inna niż `READ_ONLY` to odmowa
-  lokalna (CC-227), rozbieżność z podpowiedziami obcego serwera logowana i liczona. Ryzyko zastępcze tylko dla podpowiedzi w manifeście i hashu.
-- Po przeglądzie: jeden termin na całą wymianę z obcym serwerem, higiena opisów argumentów, `enum`/`const` i nazw właściwości (odrzucenie narzędzia), budżet węzłów schematu,
-  walidacja `mcp-path`, formatu nagłówka i adresu rejestru, HTTP 401 obcego serwera jako `credential_required`, powód techniczny w logu i metryce, ryzyko zastępcze
-  podniesione do `DESTRUCTIVE` dla nazw ze słowem destrukcyjnym, utwardzony kontener obcego serwera w osobnych sieciach, użytkownik 10001, obraz CI po digeście.
-- Licencja Apache-2.0, workflow wydania z obrazem na ghcr.io i SBOM CycloneDX, `SECURITY.md`, `CONTRIBUTING.md`.
+- Sidecar of a foreign MCP server on `mcp-platform-starter` 3.0.0-beta-14 and contracts 6.3.2 (CC-193, CC-206, CC-207, CC-226, CC-227).
+- Reads `tools/list` of the foreign server at start (waiting for it), rewrites schemas into closed and bounded ones, skips tools that cannot
+  be bounded, supports a name prefix and a list of allowed tools.
+- C6 manifest with `source: adapter`, built from the tool list the adapter exposes and submitted with `submitAdapterManifest` over mTLS
+  (CN `mcp-adapter-<serverId>`), with retries.
+- `tools/call`: the user's credential in a header of configurable format (default `Authorization: Token <PAT>`), one session per call,
+  argument validation before forwarding, result as `UntrustedText`, fixed `not_found_or_denied`, `X-Request-Id` passed to the foreign server.
+- Demo: `sooperset/mcp-atlassian` 0.23.1 (MIT), image pinned by digest, details in the README.
+- Receiver mode `adapter` (CC-226): the local decision uses the administrator's classification from the JWT (`mcp_risk`, `mcp_action`); a
+  missing classification gives `401`; a value other than `READ_ONLY` is refused locally (CC-227); a divergence from the foreign server's hints is
+  logged and counted. The substitute risk is used only for the hints in the manifest and for the hash.
+- After review: one deadline for the whole exchange with the foreign server, hygiene of argument descriptions, `enum`/`const` and property
+  names (the tool is rejected), a schema node budget, validation of `mcp-path`, of the header format and of the registry address, HTTP 401 of
+  the foreign server as `credential_required`, the technical reason in the log and in a metric, the substitute risk raised to `DESTRUCTIVE`
+  for names with a destructive word, a hardened foreign container in separate networks, user 10001, the CI image pinned by digest.
+- Apache-2.0 license, a release workflow with an image on ghcr.io and a CycloneDX SBOM, `SECURITY.md`, `CONTRIBUTING.md`.
