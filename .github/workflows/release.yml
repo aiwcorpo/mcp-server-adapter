@@ -40,7 +40,7 @@ jobs:
       - name: Verify (tests, none skipped)
         run: ci/run.sh verify
       - name: Build the jar and the SBOM
-        run: ./mvnw -B -DskipTests package org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom
+        run: ./mvnw -B -DskipTests package org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom -Dcyclonedx.skipNotDeployed=false
       - name: Build the image and save it
         run: |
           image="ghcr.io/aiwcorpo/mcp-server-adapter:${GITHUB_REF_NAME#v}"
