@@ -13,6 +13,7 @@ target/
 *.key
 *.crt
 *.env
+!deploy/mcp-adapter.env
 # Logs and local caches
 *.log
 .m2/

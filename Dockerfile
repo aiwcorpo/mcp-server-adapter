@@ -4,12 +4,12 @@ FROM eclipse-temurin:25-jre@sha256:78f1f183913482ef390c2722f46c3f0ce76ada341d695
 LABEL org.opencontainers.image.source="https://github.com/aiwcorpo/mcp-server-adapter" \
       org.opencontainers.image.licenses="Apache-2.0"
 
-# A numeric user, so that a runtime policy (runAsNonRoot) can verify it. A volume for /app/state must be writable by uid 10001.
+# A numeric user, so that a runtime policy (runAsNonRoot) can verify it. The adapter writes nothing to disk.
 RUN groupadd --system --gid 10001 mcp && useradd --system --uid 10001 --gid mcp --no-create-home --home-dir /app mcp
 WORKDIR /app
 COPY --chown=root:root target/mcp-server-adapter.jar /app/app.jar
 
 USER 10001:10001
-# mTLS from the gateway only (C3); certificates, policy keys and secrets come from the environment and mounted files.
+# mTLS from the gateway only (C3); certificates and secrets come from the environment and mounted files.
 EXPOSE 8443
 ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-XX:+ExitOnOutOfMemoryError", "-jar", "/app/app.jar"]

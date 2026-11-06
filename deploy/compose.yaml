@@ -1,0 +1,37 @@
+# mcp-server-adapter on one Docker host, next to the foreign MCP server it fronts. Configuration: mcp-adapter.env and the files in certs/.
+# Redis for the one-time jti of the internal JWT and the gateway are elsewhere; this file runs the adapter only. See README.md.
+#
+# One adapter serves one foreign server and one system: copy this directory once per server and change MCP_SERVER_ID in the env file.
+# The foreign server is not started here. Reach it by MCP_FOREIGN_URL over a network that only the adapter and that server share
+# (the adapter hands it the credential of the calling user); add that network under the service and under "networks:" as in
+# docker-compose.demo.yml. Closed network: MCP_REGISTRY in a .env file next to this one points the image to your registry.
+
+services:
+  mcp-adapter:
+    image: ${MCP_REGISTRY:-ghcr.io/aiwcorpo}/mcp-server-adapter:${MCP_ADAPTER_VERSION:-2.0.0}
+    pull_policy: ${PULL_POLICY:-missing}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    env_file: mcp-adapter.env
+    environment:
+      MCP_TLS_KEYSTORE: /certs/keystore.p12
+      MCP_TLS_TRUSTSTORE: /certs/truststore.p12
+      MCP_REGISTRY_TLS_KEYSTORE: /certs/registry-client.p12
+      MCP_REGISTRY_SSL_BUNDLE: adapter-registry
+    # The native Cedar library of the starter is unpacked to /tmp and loaded from there.
+    tmpfs: ["/tmp:exec"]
+    mem_limit: ${MCP_ADAPTER_MEM_LIMIT:-768m}
+    volumes:
+      - ./certs:/certs:ro
+    # mTLS: only the gateway reaches this port, with a certificate of the internal CA.
+    ports:
+      - 8443:8443
+    healthcheck:
+      # The adapter demands a client certificate, so a plain probe cannot ask /actuator/health; an open port is the signal.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8443"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+      start_period: 30s

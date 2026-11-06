@@ -1,9 +1,10 @@
 # Reference fragment for the adapter demo (Jira through sooperset/mcp-atlassian 0.23.1). It is not started by this repository: ws-01
 # merges it into the dev stack. The adapter takes the place of the native mcp-jira (same server id and network alias), so the
-# gateway must be configured with mcp-jira in adapter mode and the native mcp-jira container must not run at the same time.
+# gateway must have the server mcp-jira added with adapter=true (at creation, it cannot be changed later) and the native mcp-jira
+# container must not run at the same time.
 #
-# Variables: ADAPTER_IMAGE (mcp-server-adapter:m6-<sha7>), the same TLS, Redis and policy variables as the native mcp-jira service, and
-# the extra files named below. Nothing in this file is a secret: JIRA_PERSONAL_TOKEN is a placeholder the foreign server never uses.
+# Variables: ADAPTER_IMAGE (mcp-server-adapter:<tag>), the same TLS and Redis variables as the native mcp-jira service, and
+# the extra files named below. The adapter has no policy settings: no policies, no policy data (starter 4.0.0). Nothing in this file is a secret: JIRA_PERSONAL_TOKEN is a placeholder the foreign server never uses.
 services:
   mcp-atlassian:
     image: ghcr.io/sooperset/mcp-atlassian@sha256:5b7c9b64d4eb3210cab74be8bf3e6aeea9ed14f3042dc59ba5c5287bd4dbe466
@@ -73,21 +74,11 @@ services:
       MCP_REDIS_PORT: "6379"
       MCP_REDIS_USER: mcp-jira
       MCP_REDIS_PASSWORD: ${REDIS_MCP_JIRA_PASSWORD:?run make secrets}
-      MCP_POLICY_URL: https://policies.internal:8443/policies/main/latest.json
-      MCP_POLICY_KEY_ID: ${POLICY_KEY_MAIN_ID}
-      MCP_POLICY_PUBLIC_KEY_FILE: /keys/${POLICY_KEY_MAIN_ID}.public.pem
-      MCP_POLICY_STATE_DIR: /app/state
-      AIWCORPO_MCP_PLATFORM_POLICY_SSL_BUNDLE: mcp-internal-ca
       # Only for the dev stack, as for the native servers (see the dev stack): never outside it.
       SPRING_PROFILES_ACTIVE: devstack
       MCP_DEVSTACK_ACKNOWLEDGED: "true"
       AIWCORPO_MCP_PLATFORM_DEVSTACK_ACKNOWLEDGED: "true"
-      AIWCORPO_MCP_PLATFORM_POLICY_ALLOW_TEST_KEYS: "true"
-    # The image runs as uid 10001; the state volume must be writable by it (the native servers use another uid, so the init step of the
-    # stack needs its own line for this volume).
     volumes:
-      - mcp-jira-state:/app/state
-      - ${POLICY_KEYS_DIR}/${POLICY_KEY_MAIN_ID}.public.pem:/keys/${POLICY_KEY_MAIN_ID}.public.pem:ro
       - ./certs/mcp-jira/keystore.p12:/certs/mcp-jira/keystore.p12:ro
       - ./certs/mcp-jira-adapter/registry-client.p12:/certs/mcp-jira-adapter/registry-client.p12:ro
       - ./certs/ca/truststore.p12:/certs/ca/truststore.p12:ro
