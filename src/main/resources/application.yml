@@ -19,15 +19,15 @@ spring:
     mcp:
       server:
         # Transport (streamable HTTP, SYNC, endpoint /mcp) is defaulted by the starter.
-        name: ${MCP_SERVER_ID:mcp-jira}
+        name: ${aiwcorpo.mcp.platform.server-id}
         version: '@project.version@'
 
 aiwcorpo:
   mcp:
     platform:
-      # One adapter serves one system, the id is mcp-<system> (C5). The gateway decides in its own configuration which server ids
-      # are served by an adapter; this value must be one of them.
-      server-id: ${MCP_SERVER_ID:mcp-jira}
+      # One adapter serves one system; the id is mcp-<system> with any SystemId of the contracts, no list of systems is built in. The
+      # server must be added in the gateway with adapter=true (it cannot be changed afterwards) under exactly this id. No default.
+      server-id: ${MCP_SERVER_ID:}
       internal-jwt:
         # The sidecar of an adapter (CC-226): tools/call must carry the classification of the administrator (mcp_risk, mcp_action), else 401
         # classification_missing. A native server refuses those claims.
@@ -36,14 +36,6 @@ aiwcorpo:
         jwks-uri: ${MCP_GATEWAY_JWKS_URI:}
       credential:
         connect-url: ${MCP_CONNECT_URL:}
-      # The signed policy bundle (C7), the same one the gateway evaluates. The adapter does not start without a first bundle,
-      # and state-dir keeps the last accepted revision across restarts so an older signed bundle is refused.
-      policy:
-        main:
-          url: ${MCP_POLICY_URL:}
-          key-id: ${MCP_POLICY_KEY_ID:}
-          public-key-file: ${MCP_POLICY_PUBLIC_KEY_FILE:}
-        state-dir: ${MCP_POLICY_STATE_DIR:}
       # Description of this server for the registry (C6); the tool entries come from the foreign server.
       manifest:
         version: '@project.version@'

@@ -22,12 +22,10 @@ import pl.aiwcorpo.mcp.adapter.foreign.ForeignMcpClient;
 import pl.aiwcorpo.mcp.adapter.foreign.ForeignTool;
 import pl.aiwcorpo.mcp.adapter.registry.ManifestCheck;
 import pl.aiwcorpo.mcp.adapter.registry.ManifestSubmitter;
-import pl.aiwcorpo.mcp.adapter.tool.ClassifiedToolRiskRegistry;
 import pl.aiwcorpo.mcp.adapter.tool.ForeignTools;
 import pl.aiwcorpo.mcp.platform.autoconfigure.McpPlatformProperties;
 import pl.aiwcorpo.mcp.platform.autoconfigure.PlatformConfigurationGuard;
 import pl.aiwcorpo.mcp.platform.error.ToolErrorMapping;
-import pl.aiwcorpo.mcp.platform.guard.ToolRiskRegistry;
 import pl.aiwcorpo.mcp.platform.observability.ToolCallInterceptor;
 
 @Configuration(proxyBeanMethods = false)
@@ -114,12 +112,6 @@ class AdapterConfiguration {
                                               McpPlatformProperties platform, ObjectProvider<MeterRegistry> meters) {
         List<ToolCallback> callbacks = tools.callbacks(client, platform.system(), properties, meters.getIfAvailable());
         return ToolCallbackProvider.from(callbacks);
-    }
-
-    /** Replaces the starter's registry (its own bean is conditional on none): see {@link ClassifiedToolRiskRegistry}. */
-    @Bean
-    ToolRiskRegistry toolRiskRegistry(McpPlatformProperties platform) {
-        return new ClassifiedToolRiskRegistry(platform.getTools().getUnclassified());
     }
 
     @Bean

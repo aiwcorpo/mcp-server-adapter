@@ -175,7 +175,7 @@ class CallToolTest extends ServerTestSupport {
     @Test
     void theLocalDecisionUsesTheClassificationOfTheAdministratorNotTheHintsOfTheForeignServer() {
         // add_comment is a write for the foreign server (substitute risk UPDATE); the administrator classified it READ_ONLY, so the
-        // read group is what the local check asks for.
+        // call goes through and the divergence is counted.
         double before = divergences("READ_ONLY", "UPDATE");
         try (McpSyncClient reader = clientWithToken(ServerTestSupport::reader, PAT)) {
             assertThat(call(reader, "get_issue", Map.of("issue_key", "ABC-1")).isError()).isFalse();
@@ -183,14 +183,6 @@ class CallToolTest extends ServerTestSupport {
         }
         assertThat(FOREIGN.calls()).extracting(StubForeignServer.Call::tool).containsExactly("jira_get_issue", "jira_add_comment");
         assertThat(divergences("READ_ONLY", "UPDATE")).isEqualTo(before + 1);
-    }
-
-    @Test
-    void aCallerWithoutTheReadGroupIsRefusedLocallyBeforeTheForeignServer() {
-        try (McpSyncClient nobody = clientWithToken(user -> user.username("jkowalski").groups(List.of("mcp-jira-write")), PAT)) {
-            assertError(call(nobody, "get_issue", Map.of("issue_key", "ABC-1")), "access_denied");
-        }
-        assertThat(FOREIGN.calls()).isEmpty();
     }
 
     @Test
@@ -202,8 +194,7 @@ class CallToolTest extends ServerTestSupport {
             }
         }
         assertThat(FOREIGN.calls()).isEmpty();
-        // DESTRUCTIVE is already refused by the Cedar check (an editor has no destructive group), before the interceptor sees it.
-        assertThat(localDenials()).isEqualTo(before + 2);
+        assertThat(localDenials()).isEqualTo(before + 3);
     }
 
     @Test

@@ -10,7 +10,7 @@ import org.springframework.util.unit.DataSize;
 
 /**
  * Settings of the adapter that the starter does not know: where the foreign server is, how its schemas are bounded, where
- * the registry takes the manifest. Everything about the caller, the policy and the credential transport stays under
+ * the registry takes the manifest. Everything about the caller and the credential transport stays under
  * {@code aiwcorpo.mcp.platform} (starter).
  */
 @ConfigurationProperties("aiwcorpo.mcp.adapter")

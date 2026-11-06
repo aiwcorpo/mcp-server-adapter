@@ -18,11 +18,10 @@ import tools.jackson.databind.JsonNode;
  *       as the starter requires: it refuses to start with such a name under a lower risk.</li>
  * </ul>
  *
- * <p>It does not decide what matters. The gateway authorizes with the classification an administrator gave in the registry and never reads
- * the hints (CC-193, point 5); a tool unclassified there is refused as {@code tool_disabled}. What this adds is a second, weaker check:
- * a tool the server calls read-only needs the read group here, anything else the group of an update or a destructive tool. A lying
- * {@code readOnlyHint} therefore weakens only this second check. When the administrator classifies a tool lower than the local risk,
- * the local check refuses users the gateway let through (fail-closed, visible as {@code access_denied} in the audit of the adapter).
+ * <p>It does not decide anything. The gateway authorizes with the classification an administrator gave in the registry and never reads
+ * the hints (CC-193, point 5); a tool unclassified there is refused as {@code tool_disabled}. Since starter 4.0.0 the adapter has no
+ * Cedar check of its own, so this value only shapes the hints and the hash of the manifest and the {@code risk} of the audit line; the
+ * administrator's classification is compared with it in {@link pl.aiwcorpo.mcp.adapter.tool.ClassificationInterceptor} (divergence is logged).
  */
 final class LocalRisk {
 

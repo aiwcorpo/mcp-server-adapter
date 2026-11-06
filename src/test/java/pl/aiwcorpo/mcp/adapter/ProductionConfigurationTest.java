@@ -15,6 +15,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.env.YamlPropertySourceLoader;
+import org.springframework.core.env.EnumerablePropertySource;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.mock.env.MockEnvironment;
@@ -46,6 +47,15 @@ class ProductionConfigurationTest {
 
         assertThat(String.valueOf(production.getProperty("spring.ssl.bundle.jks.adapter-registry.keystore.location")))
                 .contains("MCP_REGISTRY_TLS_KEYSTORE").doesNotContain("MCP_TLS_KEYSTORE}");
+    }
+
+    @Test
+    void noPolicySettingsRemainAndTheServerIdHasNoDefault() throws IOException {
+        EnumerablePropertySource<?> base = (EnumerablePropertySource<?>) new YamlPropertySourceLoader()
+                .load("application.yml", new ClassPathResource("application.yml")).getFirst();
+
+        assertThat(base.getPropertyNames()).noneMatch(key -> key.startsWith("aiwcorpo.mcp.platform.policy"));
+        assertThat(String.valueOf(base.getProperty("aiwcorpo.mcp.platform.server-id"))).isEqualTo("${MCP_SERVER_ID:}");
     }
 
     @Test

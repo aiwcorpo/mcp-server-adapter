@@ -14,12 +14,6 @@ aiwcorpo:
         allow-test-keys: true
       credential:
         connect-url: ${MCP_CONNECT_URL:http://localhost:18090/connections?system={system}}
-      policy:
-        allow-test-keys: true
-        main:
-          url: ${MCP_POLICY_URL:http://127.0.0.1:18747/policies/main/latest.json}
-          key-id: test-policies-main-dev
-          public-key-file: ${MCP_POLICY_PUBLIC_KEY_FILE:}
       manifest:
         internal-url: https://mcp-jira.internal:8443/mcp
         accepted-credential-types: user-secret

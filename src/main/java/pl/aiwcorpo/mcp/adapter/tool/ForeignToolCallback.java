@@ -17,7 +17,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * One tool of the foreign server. The starter wraps it (binding to the caller, argument validation against the bounded schema,
- * policy, audit, error mapping); what is left here is the part only the adapter knows: put the credential of the calling user in
+ * audit, error mapping); what is left here is the part only the adapter knows: put the credential of the calling user in
  * the header the foreign server expects, forward the validated arguments and turn the answer into data.
  */
 final class ForeignToolCallback implements ToolCallback, RiskClassifiedTool {

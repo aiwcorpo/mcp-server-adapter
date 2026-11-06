@@ -34,6 +34,8 @@ class ManifestTest extends ServerTestSupport {
         assertThat(manifest.path("credential").path("required").asBoolean()).isTrue();
         assertThat(manifest.path("credential").path("acceptedTypes")).extracting(JsonNode::asString).containsExactly("user-secret");
         assertThat(manifest.path("resourceTypes")).isEmpty();
+        assertThat(manifest.has("policies")).isFalse();
+        assertThat(manifest.has("policiesHash")).isFalse();
         assertThat(manifest.path("tools")).hasSize(6);
         for (JsonNode tool : manifest.path("tools")) {
             assertThat(tool.has("risk")).as(tool.path("name").asString() + " risk").isFalse();

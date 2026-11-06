@@ -38,4 +38,24 @@ class AdapterManifestTest {
                 .isEqualTo("sha256:382c689a44ccadf3874aeea0671fe8266929ddbcf22ac8691dbdcfb13cfc46c7");
         assertThat(manifest.at("/tools/0").propertyNames()).containsExactlyInAnyOrder("name", "resourceRefs", "definition", "definitionHash");
     }
+
+    @Test
+    void aSystemOutsideAnyListIsAcceptedAndTheManifestHasNoPolicies() {
+        McpPlatformProperties platform = new McpPlatformProperties();
+        platform.setServerId("mcp-notes");
+        platform.getManifest().setVersion("2.0.0");
+        platform.getManifest().setInternalUrl("https://mcp-notes.internal:8443/mcp");
+        platform.getManifest().setAcceptedCredentialTypes(List.of("user-secret"));
+        McpSchema.Tool tool = McpSchema.Tool.builder().name("list_notes").title("List notes").description("Returns the notes of the user.")
+                .inputSchema(Fixtures.JSON.readValue("""
+                        {"type":"object","properties":{},"additionalProperties":false}""", McpSchema.JsonSchema.class))
+                .annotations(new McpSchema.ToolAnnotations(null, true, null, null, null, null)).build();
+
+        JsonNode manifest = Fixtures.JSON.readTree(AdapterManifest.build(platform, List.of(tool), false));
+
+        assertThat(manifest.path("system").asString()).isEqualTo("notes");
+        assertThat(manifest.path("resourceTypes")).isEmpty();
+        assertThat(manifest.has("policies")).isFalse();
+        assertThat(manifest.has("policiesHash")).isFalse();
+    }
 }

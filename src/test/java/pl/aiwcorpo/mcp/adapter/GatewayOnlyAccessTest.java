@@ -38,7 +38,7 @@ class GatewayOnlyAccessTest extends ServerTestSupport {
 
     @Test
     void aTokenForAnotherServerToolOrRequestIsRejected() throws Exception {
-        assertThat(post(GET_ISSUE, GATEWAY.user().tool("get_issue").audience("mcp-gitlab").mint().headers()).statusCode()).isEqualTo(401);
+        assertThat(post(GET_ISSUE, GATEWAY.user().tool("get_issue").audience("mcp-notes").mint().headers()).statusCode()).isEqualTo(401);
         assertThat(post(GET_ISSUE, GATEWAY.user().tool("search").mint().headers()).statusCode()).isEqualTo(401);
         assertThat(post(GET_ISSUE, GATEWAY.service().mint().headers()).statusCode()).isEqualTo(401);
         assertThat(post(GET_ISSUE, GATEWAY.user().tool("get_issue").issuedAt(Instant.now().minusSeconds(300)).mint().headers())
