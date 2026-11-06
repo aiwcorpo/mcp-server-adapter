@@ -2,6 +2,24 @@
 
 Format: SemVer versions, newest first.
 
+## 2.0.0
+
+Major release: no list of systems, no policy settings. Built on `mcp-platform-starter` 4.0.0 and `mcp-contracts` 7.0.0 (CC-229 ... CC-241).
+
+- Works for any system id that matches the contracts (`^[a-z][a-z0-9]{1,30}$`): `MCP_SERVER_ID` has no default and the adapter holds no list of
+  systems. The server is added in the gateway with `adapter: true` at creation (the flag cannot be changed later).
+- The manifest stays `source: adapter` with no `risk`, `action`, `resourceTypes`, `policies` or `policiesHash`; tests check the absence and a system
+  outside the five former ones.
+- Removed: `MCP_POLICY_URL`, `MCP_POLICY_KEY_ID`, `MCP_POLICY_PUBLIC_KEY_FILE`, `MCP_POLICY_STATE_DIR`, `aiwcorpo.mcp.platform.policy.*`, the
+  `/app/state` volume and the policy keys. An adapter takes no policy data from the gateway either: the starter turns its policy engine off in the
+  `adapter` receiver mode, so the gateway alone decides `call`.
+- Removed `ClassifiedToolRiskRegistry`: nothing asks the starter for the risk of a tool during a call any more. The local refusal of a
+  classification other than `READ_ONLY` (`ClassificationInterceptor`) and the divergence log and counter stay. The test of the local read group is gone
+  with the local Cedar check.
+- `deploy/` has `README.md` (certificates: server CN `mcp-<system>`, SAN `mcp-<system>.internal`, `serverAuth` and `clientAuth`; registry CN
+  `mcp-adapter-mcp-<system>`; the procedure that adds the system in the broker and the server in the gateway with `adapter: true`, deploys, classifies
+  the tools and removes both, with nothing restarting), `compose.yaml`, `mcp-adapter.env` and `certs/`. The demo fragment lost its policy settings.
+
 ## 1.0.0
 
 First public release. Built on `mcp-platform-starter` 3.0.0 and `mcp-contracts` 6.3.2 (CC-193, CC-206, CC-207, CC-226, CC-227).

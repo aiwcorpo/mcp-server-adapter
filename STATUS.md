@@ -1,6 +1,10 @@
 # STATUS: mcp-server-adapter (ws-13)
 
-Stan na 2026-11-03: etap 3 M6 zrobiony po stronie repozytorium, nic nie wdrożone. Wersja 1.0.0, starter 3.0.0, kontrakty 6.3.2.
+Stan na 2026-11-06: wersja 2.0.0, starter 4.0.0, kontrakty 7.0.0 (patrz niżej); nic nie wdrożone.
+
+## Wersja 2.0.0 (2026-11-06, serwery dynamiczne)
+
+Wersja projektu `2.0.0`, `mcp-platform.version` 4.0.0 (kontrakty 7.0.0). Adapter nie ma listy systemów: `MCP_SERVER_ID` bez wartości domyślnej, dowolny `SystemId` z kontraktów; serwer dodaje się w gatewayu z `adapter: true` przy tworzeniu (nie da się zmienić). Manifest bez `resourceTypes`, `policies` i `policiesHash`. Usunięte `MCP_POLICY_*`, `aiwcorpo.mcp.platform.policy.*`, wolumen `/app/state` i klucze polityk; w trybie `adapter` starter nie ma silnika polityk i nie pobiera danych polityki, więc o `call` decyduje wyłącznie gateway. Usunięty `ClassifiedToolRiskRegistry` (nic nie pyta o ryzyko w czasie wywołania) i test lokalnej grupy odczytu; zostaje `ClassificationInterceptor` (odmowa klasyfikacji innej niż `READ_ONLY`, log i licznik rozbieżności). `deploy/` ma README (certyfikaty, procedura bez restartów), `compose.yaml`, `mcp-adapter.env`, `certs/`. `./mvnw -B -U clean verify`: 100 testów, zielone; w jarze nie ma `mcp/policies`. Do zrobienia przez człowieka: dodać serwer w gatewayu z `adapter: true`, sklasyfikować narzędzia po pierwszej rejestracji; certyfikat serwera potrzebuje `clientAuth` obok `serverAuth` (gateway przypina oba). Nie sprawdzono na żywym gatewayu 2.0.0.
 
 ## Wersja 1.0.0 (2026-11-04)
 
