@@ -13,7 +13,7 @@ container image configured through environment variables, not a library or a tem
 the gateway decides every call, and an administrator classifies the tools at approval.
 
 Stack: Java 25, Spring Boot 4.1.0, `mcp-platform-starter` 4.0.0 (the version in `pom.xml`), `mcp-contracts` 7.0.0.
-License: Apache-2.0 ([LICENSE](LICENSE), [NOTICE](NOTICE)). Current state and plan: [STATUS.md](STATUS.md) (in Polish).
+License: Apache-2.0 ([LICENSE](LICENSE), [NOTICE](NOTICE)).
 Changes: [CHANGELOG.md](CHANGELOG.md). Contributing: [CONTRIBUTING.md](CONTRIBUTING.md). Vulnerabilities: [SECURITY.md](SECURITY.md).
 
 Operator and developer guides for the whole platform are in [mcp-docs](https://github.com/aiwcorpo/mcp-docs):

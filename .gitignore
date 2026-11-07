@@ -17,3 +17,4 @@ target/
 # Logs and local caches
 *.log
 .m2/
+STATUS.md
