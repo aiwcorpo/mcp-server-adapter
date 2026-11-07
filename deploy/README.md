@@ -1,7 +1,7 @@
 # Install mcp-server-adapter
 
 The sidecar of one foreign MCP server as a container (Docker Compose). It runs behind the MCP gateway; the gateway, the credential
-broker, the identity provider, Redis and the foreign server itself are installed elsewhere. The image is built from the `Dockerfile` in
+broker, the identity provider and the foreign server itself are installed elsewhere. The image is built from the `Dockerfile` in
 the repository root and published as `ghcr.io/aiwcorpo/mcp-server-adapter:<version>`.
 
 ```
@@ -29,7 +29,7 @@ this directory and change `MCP_SERVER_ID` and the addresses.
   Also the CA certificate.
 - The addresses of the gateway (internal TLS port; its certificate must carry the host name you use), of the foreign server and of the
   portal page for connecting an account.
-- Redis with an ACL user named like the server id that may run `SET` on `jti:mcp-<system>:*`.
+- Redis: `compose.yaml` starts one next to the server (service `redis`, reachable from the server only, default user off, one ACL account that may run `SET` on its own `jti:` keys). `MCP_REDIS_PASSWORD` in the env file is its password: choose one (`openssl rand -hex 24`). For one Redis shared by several instances, remove the service and set `MCP_REDIS_HOST` in the compose file.
 - The foreign server on a network that only the adapter shares with it. It gets the credential of the calling user, so it must not
   be reachable from the networks of other servers or of Redis.
 
