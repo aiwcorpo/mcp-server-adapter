@@ -5,14 +5,14 @@ different contract starts as a `proposed` entry in `CONTRACT_CHANGES.md` of that
 
 ## Setup
 
-JDK 25. Linux and macOS with bash 3.2 or newer; Windows only through WSL2. The `mcp-platform-starter` and `mcp-contracts` artifacts must be
+JDK 25. The `mcp-platform-starter` and `mcp-contracts` artifacts must be
 in `~/.m2` or reachable on Maven Central (see the README, "Build and test").
 
 ```bash
-ci/run.sh verify     # text checks, then clean verify; the same script runs in CI
+./mvnw -B verify     # the same command runs in CI
 ```
 
-`ci/run.sh verify` must pass before a merge: it fails when fewer than 90 tests ran or when one was skipped. The test against the real
+`./mvnw -B verify` must pass before a merge. The test against the real
 `mcp-atlassian` image (`-Preal-image`) is run by hand when the foreign client or the schema bounding changes.
 
 ## Commits

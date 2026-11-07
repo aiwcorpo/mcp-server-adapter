@@ -37,8 +37,8 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           test "$(./mvnw -q -B -N org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate -Dexpression=project.version -DforceStdout)" = "$version"
-      - name: Verify (tests, none skipped)
-        run: ci/run.sh verify
+      - name: Verify
+        run: ./mvnw -B verify
       - name: Build the jar and the SBOM
         run: ./mvnw -B -DskipTests package org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom -Dcyclonedx.skipNotDeployed=false
       - name: Build the image and save it

@@ -1,0 +1,21 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="McpServerAdapter (dev, behind LocalGateway)" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="pl.aiwcorpo.mcp.adapter.AdapterApplication" />
+    <module name="mcp-server-adapter" />
+    <option name="VM_PARAMETERS" value="--enable-native-access=ALL-UNNAMED" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <envs>
+      <env name="SPRING_PROFILES_ACTIVE" value="dev" />
+      <env name="MCP_SERVER_ID" value="mcp-jira" />
+      <env name="MCP_GATEWAY_JWKS_URI" value="http://127.0.0.1:18501/.well-known/jwks.json" />
+      <env name="MCP_FOREIGN_URL" value="http://127.0.0.1:18931" />
+      <env name="MCP_FOREIGN_ALLOW_PLAIN_HTTP" value="true" />
+      <env name="MCP_FOREIGN_DISCOVERY_AUTHORIZATION" value="Token discovery-only" />
+      <env name="MCP_ADAPTER_STRIP_PREFIX" value="jira_" />
+      <env name="MCP_ADAPTER_TOOLS_INCLUDE" value="jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions" />
+    </envs>
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

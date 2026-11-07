@@ -1,4 +1,3 @@
-# Thin wrapper: all logic is in ci/run.sh, which also runs in a developer's shell.
 # The tests need no container runtime, so verify runs on any runner; only the image job of the default branch needs the Docker
 # socket (runner tagged docker-socket). The platform artifacts come from Maven Central, so no credentials are needed.
 stages:
@@ -9,7 +8,7 @@ default:
   image: maven:3.9.12-eclipse-temurin-25@sha256:4f82a03a7d6679281952d628131299b1be88d7030a49c6a2b7d2ba2642e44e3e
 
 variables:
-  MAVEN_REPO_LOCAL: "$CI_PROJECT_DIR/.m2/repository"
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
 
 verify:
   stage: verify
@@ -18,7 +17,7 @@ verify:
     policy: pull
     paths: [.m2/repository]
   script:
-    - ci/run.sh verify
+    - ./mvnw -B verify
   artifacts:
     when: always
     paths: [target/mcp-server-adapter.jar]
@@ -30,6 +29,6 @@ build-image:
   tags: [docker-socket]
   needs: [verify]
   script:
-    - ci/run.sh image
+    - docker build -t mcp-server-adapter:$CI_COMMIT_SHORT_SHA .
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

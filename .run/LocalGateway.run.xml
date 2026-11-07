@@ -1,0 +1,8 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="LocalGateway" type="JarApplication">
+    <option name="JAR_PATH" value="$USER_HOME$/.m2/repository/pl/aiwcorpo/mcp/mcp-platform-test/4.0.0/mcp-platform-test-4.0.0-local-gateway.jar" />
+    <option name="PROGRAM_PARAMETERS" value="--server mcp-jira --jwks-port 18501 --groups mcp-jira-read --env-file local-gateway.env" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <method v="2" />
+  </configuration>
+</component>

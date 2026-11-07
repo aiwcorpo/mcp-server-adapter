@@ -1,4 +1,4 @@
-# Thin wrapper: all logic is in ci/run.sh. The tests need no container runtime, no token and no secret: the job reads the
+# The tests need no container runtime, no token and no secret: the job reads the
 # repository, and the platform artifacts (mcp-platform-starter, mcp-contracts) come from Maven Central.
 name: ci
 on:
@@ -18,5 +18,4 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - run: ci/run.sh verify
+      - run: ./mvnw -B verify

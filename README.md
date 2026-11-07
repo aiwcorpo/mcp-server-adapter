@@ -60,12 +60,29 @@ characters in names, enums or argument descriptions.
 
 JDK 25 is required. The tests need no container runtime: the foreign server and the registry are stubs inside the test JVM.
 The platform artifacts (`mcp-platform-starter`, `mcp-contracts`) come from Maven Central; no registry login is needed.
-Linux and macOS with bash 3.2 or newer; on Windows use WSL2.
 
 ```bash
-make ci            # ci/run.sh verify: text checks, clean verify, fails when no test ran or one was skipped
-ci/run.sh image    # docker build, tag mcp-server-adapter:m6-<sha7>; never pushes
+./mvnw -B verify                        # tests and target/mcp-server-adapter.jar
+docker build -t mcp-server-adapter:dev .
 ```
+
+### Run locally
+
+`.run/` has two IntelliJ configurations, as the native servers have. Start the foreign server first: the demo one, from the image
+pinned in the Demo section below, which must already be in your local Docker (the startup waits up to 90 s for it):
+
+```bash
+docker run -d --rm --name adapter-foreign-dev -p 127.0.0.1:18931:8000 -e JIRA_URL=http://localhost:18081 \
+  -e JIRA_PERSONAL_TOKEN=placeholder-never-used -e ALLOW_GLOBAL_CRED_FALLBACK=false -e TOOLSETS=all \
+  -e ENABLED_TOOLS=jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions \
+  ghcr.io/sooperset/mcp-atlassian@sha256:5b7c9b64d4eb3210cab74be8bf3e6aeea9ed14f3042dc59ba5c5287bd4dbe466 \
+  --transport streamable-http --port 8000 --host 0.0.0.0
+```
+
+Then start `LocalGateway` (the gateway of `mcp-platform-test` 4.0.0 on `http://127.0.0.1:18500/mcp`, needs the artifact in `~/.m2`:
+`./mvnw verify` of the starter) and `McpServerAdapter (dev, behind LocalGateway)`. `tools/list` works with any
+`Authorization: Bearer <token>`. `tools/call` answers `unauthenticated`: LocalGateway signs no `mcp_risk` and `mcp_action`, which an
+adapter requires, so calls need a real gateway. Stop the foreign server with `docker stop adapter-foreign-dev`.
 
 The container runs as the numeric user 10001:10001 on a glibc base (the native Cedar library does not work on musl) and listens
 on 8443. The adapter writes nothing to disk. The release image is published as
