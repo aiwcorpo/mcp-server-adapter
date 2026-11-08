@@ -26,27 +26,17 @@ import pl.aiwcorpo.mcp.adapter.config.AdapterProperties;
 class ProductionConfigurationTest {
 
     @Test
-    void outsideDevTheAdapterDemandsAClientCertificateFromTheGateway() throws IOException {
+    void theAdapterAsksForNoClientCertificateAndLeavesTlsToTheStarter() throws IOException {
         List<PropertySource<?>> documents = new YamlPropertySourceLoader().load("application.yml", new ClassPathResource("application.yml"));
 
-        PropertySource<?> production = documents.stream()
-                .filter(document -> "!dev".equals(document.getProperty("spring.config.activate.on-profile"))).findFirst().orElseThrow();
-        assertThat(String.valueOf(production.getProperty("server.ssl.client-auth"))).isEqualTo("need");
-        assertThat(String.valueOf(production.getProperty("server.ssl.bundle"))).isEqualTo("mcp-server");
+        // The gateway proves itself with the internal JWT, not with a certificate; the certificate of the adapter comes from MCP_TLS_*, or the
+        // starter generates one (CC-249), so the file sets neither the client auth nor a bundle, and no registry identity with a certificate.
         assertThat(documents).allSatisfy(document -> {
-            Object clientAuth = document.getProperty("server.ssl.client-auth");
-            assertThat(clientAuth == null || "need".equals(String.valueOf(clientAuth))).isTrue();
+            assertThat(document.containsProperty("server.ssl.client-auth")).isFalse();
+            assertThat(document.containsProperty("server.ssl.bundle")).isFalse();
+            assertThat(document.containsProperty("spring.ssl.bundle.jks.adapter-registry.keystore.location")).isFalse();
+            assertThat(document.containsProperty("aiwcorpo.mcp.adapter.registry.admin-url")).isFalse();
         });
-    }
-
-    @Test
-    void theRegistryIdentityIsAKeystoreOfItsOwnNotTheServerCertificate() throws IOException {
-        List<PropertySource<?>> documents = new YamlPropertySourceLoader().load("application.yml", new ClassPathResource("application.yml"));
-        PropertySource<?> production = documents.stream()
-                .filter(document -> "!dev".equals(document.getProperty("spring.config.activate.on-profile"))).findFirst().orElseThrow();
-
-        assertThat(String.valueOf(production.getProperty("spring.ssl.bundle.jks.adapter-registry.keystore.location")))
-                .contains("MCP_REGISTRY_TLS_KEYSTORE").doesNotContain("MCP_TLS_KEYSTORE}");
     }
 
     @Test
@@ -55,6 +45,7 @@ class ProductionConfigurationTest {
                 .load("application.yml", new ClassPathResource("application.yml")).getFirst();
 
         assertThat(base.getPropertyNames()).noneMatch(key -> key.startsWith("aiwcorpo.mcp.platform.policy"));
+        assertThat(base.getPropertyNames()).as("informational and optional (CC-249)").doesNotContain("aiwcorpo.mcp.platform.manifest.internal-url");
         assertThat(String.valueOf(base.getProperty("aiwcorpo.mcp.platform.server-id"))).isEqualTo("${MCP_SERVER_ID:}");
     }
 
@@ -120,27 +111,6 @@ class ProductionConfigurationTest {
         assertThatThrownBy(() -> checkPath("//elsewhere.internal/mcp")).hasMessageContaining("mcp-path");
         assertThatThrownBy(() -> checkPath("http://elsewhere.internal/mcp")).hasMessageContaining("mcp-path");
         assertThatCode(() -> checkPath("/mcp")).doesNotThrowAnyException();
-    }
-
-    @Test
-    void outsideDevTheRegistryChannelIsHttpsWithAClientCertificate() {
-        MockEnvironment production = new MockEnvironment();
-        AdapterProperties.Registry http = registry("http://mcp-gateway.internal:8443", "adapter-registry");
-        AdapterProperties.Registry noBundle = registry("https://mcp-gateway.internal:8443", null);
-        AdapterProperties.Registry good = registry("https://mcp-gateway.internal:8443", "adapter-registry");
-
-        assertThatThrownBy(() -> AdapterConfiguration.requireSafeRegistry(http, production)).hasMessageContaining("https");
-        assertThatThrownBy(() -> AdapterConfiguration.requireSafeRegistry(noBundle, production)).hasMessageContaining("ssl-bundle");
-        assertThatCode(() -> AdapterConfiguration.requireSafeRegistry(good, production)).doesNotThrowAnyException();
-        assertThatCode(() -> AdapterConfiguration.requireSafeRegistry(registry(null, null), production)).doesNotThrowAnyException();
-        MockEnvironment dev = new MockEnvironment();
-        dev.setActiveProfiles("dev");
-        assertThatCode(() -> AdapterConfiguration.requireSafeRegistry(http, dev)).doesNotThrowAnyException();
-    }
-
-    private static AdapterProperties.Registry registry(String url, String bundle) {
-        return new AdapterProperties.Registry(url == null ? null : URI.create(url), bundle, Duration.ofSeconds(1), Duration.ofSeconds(1),
-                Duration.ofSeconds(1), DataSize.ofMegabytes(1));
     }
 
     private static void checkPath(String path) {

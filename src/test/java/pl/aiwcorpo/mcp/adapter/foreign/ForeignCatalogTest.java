@@ -21,9 +21,7 @@ class ForeignCatalogTest {
         return new AdapterProperties(
                 new AdapterProperties.Foreign(url, "/mcp", "Token {credential}", discovery, Duration.ofSeconds(1),
                         Duration.ofSeconds(2), startupWait, DataSize.ofMegabytes(1), true, null),
-                Fixtures.limits(), new AdapterProperties.Tools(include, prefix),
-                new AdapterProperties.Registry(null, null, Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1),
-                        DataSize.ofMegabytes(1)));
+                Fixtures.limits(), new AdapterProperties.Tools(include, prefix));
     }
 
     private static List<ForeignTool> build(List<ObjectNode> listed, List<String> include, String prefix) {
@@ -153,7 +151,7 @@ class ForeignCatalogTest {
     }
 
     @Test
-    void aToolTheStartersRegistryRefusesIsLeftOutAndTheRestStarts() {
+    void aToolTheStartersRulesRefuseIsLeftOutAndTheRestStarts() {
         ForeignTool lying = new ForeignTool("remove_it", "remove_it", "Remove it", "Removes it.",
                 Fixtures.JSON.createObjectNode().put("type", "object"), RiskLevel.READ_ONLY);
         ForeignTool fine = new ForeignTool("get_it", "get_it", "Get it", "Gets it.",

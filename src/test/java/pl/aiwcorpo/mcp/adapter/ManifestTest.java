@@ -7,16 +7,39 @@ import io.modelcontextprotocol.spec.McpSchema;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import pl.aiwcorpo.mcp.adapter.registry.ManifestCheck;
 import pl.aiwcorpo.mcp.manifest.DefinitionHash;
 import pl.aiwcorpo.mcp.manifest.ManifestRules;
+import pl.aiwcorpo.mcp.platform.manifest.ManifestCheck;
 import tools.jackson.databind.JsonNode;
 
-/** The manifest the adapter sends: the form of CC-193 and exactly what tools/list shows. */
+/** The manifest the adapter serves for the gateway to pull: the form of CC-193 and exactly what tools/list shows. */
 class ManifestTest extends ServerTestSupport {
 
     @Autowired
     ManifestCheck check;
+
+    private final java.net.http.HttpClient http = java.net.http.HttpClient.newHttpClient();
+
+    private java.net.http.HttpResponse<String> get(String path, java.util.Map<String, String> headers) throws Exception {
+        java.net.http.HttpRequest.Builder request = java.net.http.HttpRequest.newBuilder(java.net.URI.create(baseUrl() + path)).GET();
+        headers.forEach(request::header);
+        return http.send(request.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
+    void isServedAtTheWellKnownPathToTheGatewayOnlyAndIsTheDocumentTheCheckBuilt() throws Exception {
+        String path = "/.well-known/mcp-manifest";
+
+        java.net.http.HttpResponse<String> served = get(path, GATEWAY.manifestToken().mint().headers());
+
+        assertThat(served.statusCode()).isEqualTo(200);
+        assertThat(served.headers().firstValue("Cache-Control")).hasValueSatisfying(value -> assertThat(value).contains("no-store"));
+        assertThat(JSON.readTree(served.body())).isEqualTo(manifest());
+        assertThat(JSON.readTree(served.body()).path("source").asString()).isEqualTo("adapter");
+        assertThat(get(path, java.util.Map.of()).statusCode()).isEqualTo(401);
+        assertThat(get(path, GATEWAY.service().mint().headers()).statusCode()).as("a token minted for calls").isEqualTo(401);
+        assertThat(get(path, GATEWAY.user().mint().headers()).statusCode()).as("a user is not the gateway pulling").isEqualTo(401);
+    }
 
     private JsonNode manifest() {
         return JSON.readTree(check.manifest().orElseThrow());
@@ -46,7 +69,7 @@ class ManifestTest extends ServerTestSupport {
     }
 
     @Test
-    void passesTheRulesTheRegistryAppliesAndTheHashesAreTheContractsOwn() {
+    void passesTheRulesTheGatewayAppliesAndTheHashesAreTheContractsOwn() {
         String text = check.manifest().orElseThrow();
 
         assertThat(ManifestRules.violations(text)).isEmpty();

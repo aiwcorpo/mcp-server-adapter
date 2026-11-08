@@ -26,8 +26,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The whole adapter over HTTP, with TestGateway in place of the gateway, {@link StubForeignServer} in place of the foreign
- * server and {@link StubRegistry} in place of the registry. Shared by the test classes so they run against one application context.
+ * The whole adapter over HTTP, with TestGateway in place of the gateway (it pushes the policy data and could pull the manifest) and
+ * {@link StubForeignServer} in place of the foreign server. Shared by the test classes so they run against one application context.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("dev")
@@ -43,7 +43,6 @@ abstract class ServerTestSupport {
 
     static final TestGateway GATEWAY = TestGateway.start(SERVER_ID);
     static final StubForeignServer FOREIGN = new StubForeignServer().tools(Fixtures.atlassianTools());
-    static final StubRegistry REGISTRY = new StubRegistry();
 
     @DynamicPropertySource
     static void environment(DynamicPropertyRegistry registry) {
@@ -57,9 +56,6 @@ abstract class ServerTestSupport {
                 () -> "jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions,jira_add_comment,jira_transition_issue");
         registry.add("aiwcorpo.mcp.adapter.tools.strip-prefix", () -> "jira_");
         registry.add("aiwcorpo.mcp.adapter.limits.result-max-chars", () -> "2000");
-        registry.add("aiwcorpo.mcp.adapter.registry.admin-url", REGISTRY::url);
-        registry.add("aiwcorpo.mcp.adapter.registry.retry-interval", () -> "200ms");
-        registry.add("aiwcorpo.mcp.adapter.registry.max-retry-interval", () -> "400ms");
     }
 
     @LocalServerPort

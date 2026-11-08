@@ -1,5 +1,7 @@
-# Base configuration is the production one: mTLS from the gateway, internal JWT, jti store in Redis.
-# Everything that differs per environment comes from environment variables (README, "Configuration").
+# Base configuration is the production one: TLS on the server port (the author's own certificate, or one the starter generates
+# into MCP_STATE_DIR), the gateway's internal JWT on every path but the health check, the one-time jti in memory.
+# Everything that differs per environment comes from environment variables (README, "Configuration"); the starter reads
+# MCP_TLS_*, MCP_PLAIN_HTTP, MCP_STATE_DIR, MCP_REDIS_* and MCP_PAGING_CURSOR_KEY itself.
 # The 'dev' profile (tests, see application-dev.yml) only turns off TLS; the other development relaxations come from
 # TestGateway and the starter refuses them outside 'dev'.
 server:
@@ -9,12 +11,6 @@ server:
 spring:
   application:
     name: mcp-server-adapter
-  data:
-    redis:
-      host: ${MCP_REDIS_HOST:localhost}
-      port: ${MCP_REDIS_PORT:6379}
-      username: ${MCP_REDIS_USER:}
-      password: ${MCP_REDIS_PASSWORD:}
   ai:
     mcp:
       server:
@@ -33,13 +29,14 @@ aiwcorpo:
         # classification_missing. A native server refuses those claims.
         receiver-mode: adapter
         issuer: ${MCP_GATEWAY_ISSUER:https://mcp-gateway.internal}
+        # The public key set of the gateway: https://<domain>/.well-known/mcp-jwks.json
         jwks-uri: ${MCP_GATEWAY_JWKS_URI:}
       credential:
         connect-url: ${MCP_CONNECT_URL:}
-      # Description of this server for the registry (C6); the tool entries come from the foreign server.
+      # Description of this server (GET /.well-known/mcp-manifest, C6, source: adapter, pulled by the gateway); the tool entries come from
+      # the foreign server. The allowed AI clients and the other policy data are pushed by the gateway; nothing to configure for them.
       manifest:
         version: '@project.version@'
-        internal-url: ${MCP_INTERNAL_URL:}
         accepted-credential-types: ${MCP_ACCEPTED_CREDENTIAL_TYPES:user-secret}
         output-file: ${MCP_MANIFEST_OUTPUT_FILE:}
     adapter:
@@ -65,10 +62,6 @@ aiwcorpo:
       tools:
         include: ${MCP_ADAPTER_TOOLS_INCLUDE:}
         strip-prefix: ${MCP_ADAPTER_STRIP_PREFIX:}
-      registry:
-        # Base URL of the mTLS listener of the gateway (C5). Empty: the manifest is only built and checked, not sent.
-        admin-url: ${MCP_REGISTRY_URL:}
-        ssl-bundle: ${MCP_REGISTRY_SSL_BUNDLE:}
 
 management:
   endpoints:
@@ -82,47 +75,3 @@ management:
   metrics:
     tags:
       application: mcp-server-adapter
-
----
-# TLS outside 'dev'. The adapter ends mTLS itself: the gateway must present a certificate of the internal CA (the starter also
-# checks its CN). adapter-registry is the client identity for the registry: the certificate mcp-adapter-<serverId> and the CA of
-# the gateway.
-spring:
-  config:
-    activate:
-      on-profile: "!dev"
-  ssl:
-    bundle:
-      jks:
-        mcp-server:
-          keystore:
-            location: file:${MCP_TLS_KEYSTORE}
-            password: ${MCP_TLS_STORE_PASSWORD}
-            type: PKCS12
-          truststore:
-            location: file:${MCP_TLS_TRUSTSTORE}
-            password: ${MCP_TLS_STORE_PASSWORD}
-            type: PKCS12
-        mcp-internal-ca:
-          truststore:
-            location: file:${MCP_TLS_TRUSTSTORE}
-            password: ${MCP_TLS_STORE_PASSWORD}
-            type: PKCS12
-        adapter-registry:
-          keystore:
-            location: file:${MCP_REGISTRY_TLS_KEYSTORE}
-            password: ${MCP_TLS_STORE_PASSWORD}
-            type: PKCS12
-          truststore:
-            location: file:${MCP_TLS_TRUSTSTORE}
-            password: ${MCP_TLS_STORE_PASSWORD}
-            type: PKCS12
-server:
-  ssl:
-    bundle: mcp-server
-    client-auth: need
-aiwcorpo:
-  mcp:
-    platform:
-      internal-jwt:
-        jwks-ssl-bundle: mcp-internal-ca

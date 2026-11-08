@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Sidecar of a foreign MCP server (ws-13). Built on mcp-platform-starter: it takes traffic only from the gateway
-  (mTLS + internal JWT), submits the manifest of the foreign server to the registry and forwards tools/call with the
+  (internal JWT), serves the manifest of the foreign server for the gateway to pull and forwards tools/call with the
   credential of the calling user. One deployable artifact: target/mcp-server-adapter.jar.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"

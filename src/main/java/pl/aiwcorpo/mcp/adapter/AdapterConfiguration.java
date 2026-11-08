@@ -1,12 +1,9 @@
 package pl.aiwcorpo.mcp.adapter;
 
 import io.micrometer.core.instrument.MeterRegistry;
-import io.modelcontextprotocol.server.McpSyncServer;
 import java.net.URI;
-import java.net.http.HttpClient;
 import java.util.List;
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLParameters;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.beans.factory.ObjectProvider;
@@ -20,8 +17,6 @@ import pl.aiwcorpo.mcp.adapter.config.AdapterProperties;
 import pl.aiwcorpo.mcp.adapter.foreign.ForeignCatalog;
 import pl.aiwcorpo.mcp.adapter.foreign.ForeignMcpClient;
 import pl.aiwcorpo.mcp.adapter.foreign.ForeignTool;
-import pl.aiwcorpo.mcp.adapter.registry.ManifestCheck;
-import pl.aiwcorpo.mcp.adapter.registry.ManifestSubmitter;
 import pl.aiwcorpo.mcp.adapter.tool.ForeignTools;
 import pl.aiwcorpo.mcp.platform.autoconfigure.McpPlatformProperties;
 import pl.aiwcorpo.mcp.platform.autoconfigure.PlatformConfigurationGuard;
@@ -79,28 +74,6 @@ class AdapterConfiguration {
         }
     }
 
-    /** Outside dev the manifest goes over mTLS with a client certificate; an address that is not https or has no bundle would retry for ever. */
-    static void requireSafeRegistry(AdapterProperties.Registry registry, Environment environment) {
-        URI url = registry.adminUrl();
-        if (url == null || environment.acceptsProfiles(Profiles.of(PlatformConfigurationGuard.DEV_PROFILE))) {
-            return;
-        }
-        if (!"https".equalsIgnoreCase(url.getScheme()) || url.getHost() == null || url.getUserInfo() != null) {
-            throw new IllegalStateException("aiwcorpo.mcp.adapter.registry.admin-url must be an https address without credentials");
-        }
-        if (registry.sslBundle() == null || registry.sslBundle().isBlank()) {
-            throw new IllegalStateException("aiwcorpo.mcp.adapter.registry.ssl-bundle is not set: the registry channel needs the client "
-                    + "certificate mcp-adapter-<serverId> (mTLS)");
-        }
-    }
-
-    /** The certificate of the gateway must name the host it is reached by; set explicitly instead of relying on a default of the HTTP client. */
-    private static SSLParameters hostnameChecked() {
-        SSLParameters parameters = new SSLParameters();
-        parameters.setEndpointIdentificationAlgorithm("HTTPS");
-        return parameters;
-    }
-
     @Bean
     ForeignTools foreignTools(ForeignMcpClient client, AdapterProperties properties) {
         List<ForeignTool> tools = ForeignCatalog.discover(client, properties);
@@ -122,24 +95,5 @@ class AdapterConfiguration {
     @Bean
     ToolErrorMapping foreignErrors() {
         return ForeignTools.errors();
-    }
-
-    @Bean
-    ManifestCheck adapterManifestCheck(ObjectProvider<McpSyncServer> servers, McpPlatformProperties platform, Environment environment) {
-        return new ManifestCheck(servers, platform, PlatformConfigurationGuard.devstackProfile(environment));
-    }
-
-    @Bean
-    ManifestSubmitter manifestSubmitter(AdapterProperties properties, McpPlatformProperties platform, ManifestCheck manifest,
-                                        ObjectProvider<SslBundles> bundles, ObjectProvider<MeterRegistry> meters, Environment environment) {
-        AdapterProperties.Registry registry = properties.registry();
-        requireSafeRegistry(registry, environment);
-        HttpClient.Builder builder = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER)
-                .version(HttpClient.Version.HTTP_1_1).connectTimeout(registry.requestTimeout());
-        if (registry.sslBundle() != null && !registry.sslBundle().isBlank()) {
-            builder.sslContext(bundles.getObject().getBundle(registry.sslBundle()).createSslContext());
-            builder.sslParameters(hostnameChecked());
-        }
-        return new ManifestSubmitter(registry, platform.getServerId(), manifest, builder.build(), meters.getIfAvailable());
     }
 }

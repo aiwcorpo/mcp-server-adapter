@@ -121,7 +121,7 @@ public final class ForeignCatalog {
 
     /**
      * The description is text of the foreign server that is shown to the model. It is cleaned of control and invisible characters and cut;
-     * the registry pins the result by its hash, so an administrator approves the words the model will read.
+     * the gateway pins the result by its hash, so an administrator approves the words the model will read.
      */
     private static String descriptionOf(ObjectNode tool, String title, int maxLength) {
         String raw = tool.path("description").asString("");

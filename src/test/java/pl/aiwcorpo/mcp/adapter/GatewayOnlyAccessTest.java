@@ -47,6 +47,24 @@ class GatewayOnlyAccessTest extends ServerTestSupport {
     }
 
     @Test
+    void aTokenOfAnotherPurposeCannotPushPolicyDataNorCallAndTheAdapterTakesTheGatewaysPush() throws Exception {
+        String push = "/.well-known/mcp-policy-data";
+        assertThat(postTo(push, "{}", GATEWAY.service().mint().headers()).statusCode()).as("a call token pushing").isEqualTo(401);
+        assertThat(postTo(push, "{}", GATEWAY.manifestToken().mint().headers()).statusCode()).as("a manifest token pushing").isEqualTo(401);
+        assertThat(post(GET_ISSUE, GATEWAY.service().use(TestGateway.USE_POLICY_DATA).mint().headers()).statusCode())
+                .as("a policy-data token calling").isEqualTo(401);
+        assertThat(FOREIGN.calls()).isEmpty();
+
+        // The adapter has no engine and no gate: it takes the document and answers the contract's acknowledgement, with no 409 for any prv.
+        var ack = GATEWAY.policyData().pushTo(java.net.URI.create(baseUrl()));
+        assertThat(ack).extracting(pl.aiwcorpo.mcp.platform.test.PolicyDataEndpoint.Ack::status,
+                pl.aiwcorpo.mcp.platform.test.PolicyDataEndpoint.Ack::gate).containsExactly(200, "ok");
+        HttpResponse<String> ahead = post(GET_ISSUE, GATEWAY.user().tool("get_issue").policyRevision(Integer.MAX_VALUE)
+                .extraClaim("mcp_risk", "READ_ONLY").extraClaim("mcp_action", "read").mint().headers());
+        assertThat(ahead.statusCode()).as("an adapter never answers policy_data_stale").isNotEqualTo(409);
+    }
+
+    @Test
     void aToolCallWithoutTheClassificationOfTheAdministratorIs401ButWithItPasses() throws Exception {
         TestGateway.Minted without = GATEWAY.user().username("jkowalski").groups(java.util.List.of(READ_GROUP)).tool("get_issue").mint();
         HttpResponse<String> refused = post(GET_ISSUE, without.headers());
@@ -82,6 +100,15 @@ class GatewayOnlyAccessTest extends ServerTestSupport {
     private HttpResponse<String> post(String body, Map<String, String> headers) throws Exception {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(baseUrl() + ENDPOINT)).timeout(Duration.ofSeconds(15))
                 .header("Content-Type", "application/json").header("Accept", "application/json, text/event-stream")
+                .POST(HttpRequest.BodyPublishers.ofString(body));
+        headers.forEach(request::header);
+        return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> postTo(String path, String body, Map<String, String> headers) throws Exception {
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(baseUrl() + path))
+                .timeout(Duration.ofSeconds(15))
+                .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body));
         headers.forEach(request::header);
         return http.send(request.build(), HttpResponse.BodyHandlers.ofString());

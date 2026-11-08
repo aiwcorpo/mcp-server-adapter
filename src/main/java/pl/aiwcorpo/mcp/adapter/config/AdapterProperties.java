@@ -10,12 +10,11 @@ import org.springframework.util.unit.DataSize;
 
 /**
  * Settings of the adapter that the starter does not know: where the foreign server is, how its schemas are bounded, where
- * the registry takes the manifest. Everything about the caller and the credential transport stays under
+ * which tools it exposes. Everything about the caller and the credential transport stays under
  * {@code aiwcorpo.mcp.platform} (starter).
  */
 @ConfigurationProperties("aiwcorpo.mcp.adapter")
-public record AdapterProperties(@DefaultValue Foreign foreign, @DefaultValue Limits limits, @DefaultValue Tools tools,
-                                @DefaultValue Registry registry) {
+public record AdapterProperties(@DefaultValue Foreign foreign, @DefaultValue Limits limits, @DefaultValue Tools tools) {
 
     /**
      * @param url                    base URL of the foreign server, without the MCP path
@@ -60,15 +59,5 @@ public record AdapterProperties(@DefaultValue Foreign foreign, @DefaultValue Lim
      * @param stripPrefix a prefix removed from the foreign names ({@code jira_}), so the tools keep the names a server of that system has
      */
     public record Tools(@DefaultValue List<String> include, @DefaultValue("") String stripPrefix) {
-    }
-
-    /**
-     * @param adminUrl       base URL of the gateway's mTLS listener (C5); empty means the manifest is not submitted (tests, a dry run)
-     * @param sslBundle      Spring SSL bundle holding the certificate {@code mcp-adapter-<serverId>} and the CA of the gateway
-     * @param retryInterval  first pause between attempts, doubled up to {@code maxRetryInterval}
-     */
-    public record Registry(URI adminUrl, String sslBundle, @DefaultValue("5s") Duration retryInterval,
-                           @DefaultValue("60s") Duration maxRetryInterval, @DefaultValue("10s") Duration requestTimeout,
-                           @DefaultValue("1MB") DataSize maxResponseSize) {
     }
 }
