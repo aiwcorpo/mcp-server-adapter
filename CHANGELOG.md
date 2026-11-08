@@ -6,6 +6,14 @@ Format: SemVer versions, newest first.
 
 Major release: no list of systems, no policy settings. Built on `mcp-platform-starter` 4.0.0 and `mcp-contracts` 7.0.0 (CC-229 ... CC-241).
 
+- CC-249, the gateway connects to the adapter by its address: the adapter no longer submits its manifest (no registry channel, no certificate
+  `mcp-adapter-<serverId>`, no `MCP_REGISTRY_*`, `ManifestSubmitter`, `AdapterManifest` or the metrics `mcp_adapter_manifest_*`). The starter serves the manifest
+  it builds in `receiver-mode: adapter` (`source: adapter`) at `GET /.well-known/mcp-manifest`, and the gateway pulls it; the server is an adapter because that
+  manifest says so, no `adapter: true` is given when it is added. The adapter takes `POST /.well-known/mcp-policy-data` and decides nothing with it. No server
+  certificate from the internal CA, no mTLS, no `MCP_INTERNAL_URL`, `MCP_TLS_TRUSTSTORE` and no Redis service in `deploy/compose.yaml`: TLS is the author's own
+  certificate (`MCP_TLS_CERT` and `MCP_TLS_KEY`, or `MCP_TLS_KEYSTORE`), a self-signed one generated once into `MCP_STATE_DIR` (its fingerprint is in the log at
+  start), or `MCP_PLAIN_HTTP=true`; the jti is kept in memory unless `MCP_REDIS_HOST` is set. `MCP_GATEWAY_JWKS_URI` is the public
+  `https://<domain>/.well-known/mcp-jwks.json`. `deploy/README.md` has the new procedure.
 - Works for any system id that matches the contracts (`^[a-z][a-z0-9]{1,30}$`): `MCP_SERVER_ID` has no default and the adapter holds no list of
   systems. The server is added in the gateway with `adapter: true` at creation (the flag cannot be changed later).
 - The manifest stays `source: adapter` with no `risk`, `action`, `resourceTypes`, `policies` or `policiesHash`; tests check the absence and a system

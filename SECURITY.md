@@ -19,7 +19,7 @@ Out of scope:
 - The foreign server itself (for the demo, `sooperset/mcp-atlassian`): report to its maintainers. The adapter limits what a foreign
   server can do to the platform (bounded arguments, untrusted results, one credential per call), not what it does to its own system.
 - The gateway, the credential broker, the registry and the policies: separate repositories.
-- The `dev` and `devstack` profiles of the starter relax TLS, mTLS and the replay store by design and are refused outside a development stack.
+- The `dev` and `devstack` profiles of the starter relax TLS and the replay store by design and are refused outside a development stack.
 - `MCP_FOREIGN_ALLOW_PLAIN_HTTP=true` sends the credential of the user over plain http; it is for a private network between the adapter and
   its foreign server and nothing else.
 

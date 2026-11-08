@@ -1,6 +1,6 @@
 # Contributing
 
-The adapter follows the contracts of `mcp-contracts` (C5 `submitAdapterManifest`, C6 manifest with `source: adapter`). A change that needs a
+The adapter follows the contracts of `mcp-contracts` (C14 `GET /.well-known/mcp-manifest`, C6 manifest with `source: adapter`). A change that needs a
 different contract starts as a `proposed` entry in `CONTRACT_CHANGES.md` of that repository and needs approval before it is implemented here.
 
 ## Setup
