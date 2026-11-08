@@ -1,6 +1,8 @@
-# mcp-server-adapter on one Docker host, next to the foreign MCP server it fronts. Configuration: mcp-adapter.env and the files in certs/.
+# mcp-server-adapter on one Docker host, next to the foreign MCP server it fronts. Configuration: mcp-adapter.env, and certs/ only when you
+# bring your own certificate.
 #
-# The gateway is elsewhere; this file runs the adapter and the Redis for its one-time jti. See README.md.
+# The gateway is elsewhere; this file runs the adapter only: its one-time jti is kept in memory (Redis only for several instances, see
+# mcp-adapter.env) and the state volume keeps its self-signed certificate between starts. See README.md.
 #
 # One adapter serves one foreign server and one system: copy this directory once per server and change MCP_SERVER_ID in the env file.
 # The foreign server is not started here. Reach it by MCP_FOREIGN_URL over a network that only the adapter and that server share
@@ -16,58 +18,24 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     env_file: mcp-adapter.env
-    environment:
-      MCP_TLS_KEYSTORE: /certs/keystore.p12
-      MCP_TLS_TRUSTSTORE: /certs/truststore.p12
-      # The Redis started below. Remove it and set this to your own Redis for several instances behind one gateway.
-      MCP_REDIS_HOST: redis
-      MCP_REGISTRY_TLS_KEYSTORE: /certs/registry-client.p12
-      MCP_REGISTRY_SSL_BUNDLE: adapter-registry
     # The native Cedar library of the starter is unpacked to /tmp and loaded from there.
     tmpfs: ["/tmp:exec"]
     mem_limit: ${MCP_ADAPTER_MEM_LIMIT:-768m}
     volumes:
+      # The generated certificate must be the same at every start, or the operator has to approve the connection again.
+      - state:/var/lib/mcp/state
+      # Only for your own certificate (MCP_TLS_CERT, MCP_TLS_KEY or MCP_TLS_KEYSTORE in mcp-adapter.env); the directory may stay empty.
       - ./certs:/certs:ro
-    # mTLS: only the gateway reaches this port, with a certificate of the internal CA.
+    # The gateway connects here, to the address the operator enters in the portal.
     ports:
       - 8443:8443
-    networks: [default, stores]
-    depends_on:
-      redis: {condition: service_healthy}
     healthcheck:
-      # The adapter demands a client certificate, so a plain probe cannot ask /actuator/health; an open port is the signal.
+      # An open port is the signal: the image has no HTTP client, and /actuator/health is the only path without a token.
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8443"]
       interval: 5s
       timeout: 3s
       retries: 40
       start_period: 30s
 
-  # Redis for the one-time jti of the internal JWT, next to the server and reachable from it only. The default user is off; the one
-  # account is named like MCP_REDIS_USER and may run SET on its own jti keys. Its password is MCP_REDIS_PASSWORD of the env file
-  # (which this service therefore reads too); it goes into an ACL file in /tmp, never into a command line.
-  redis:
-    image: ${MCP_THIRD_PARTY_REGISTRY:-docker.io/library}/redis:8.8.4-alpine@sha256:be8dfdf58574d626e0abe03073ce9178509e0e9564a316e34e71d2289b8370e1
-    pull_policy: ${PULL_POLICY:-missing}
-    restart: unless-stopped
-    user: redis
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
-    env_file: mcp-adapter.env
-    tmpfs: ["/tmp"]
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        printf 'user default off resetkeys resetchannels -@all\nuser %s on >%s resetkeys ~jti:%s:* resetchannels -@all +set +ping +auth +hello +client|setname +client|setinfo +reset +quit\n' "$$MCP_REDIS_USER" "$$MCP_REDIS_PASSWORD" "$$MCP_REDIS_USER" > /tmp/users.acl
-        exec redis-server --aclfile /tmp/users.acl --save "" --appendonly no
-    healthcheck:
-      # The default user is off, so an answer that asks for a login proves the server is up.
-      test: ["CMD-SHELL", "redis-cli ping 2>&1 | grep -qE 'PONG|NOAUTH'"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    networks: [stores]
-
-networks:
-  stores:
-    internal: true
+volumes:
+  state:

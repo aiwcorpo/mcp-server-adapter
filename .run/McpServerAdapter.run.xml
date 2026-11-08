@@ -7,7 +7,7 @@
     <envs>
       <env name="SPRING_PROFILES_ACTIVE" value="dev" />
       <env name="MCP_SERVER_ID" value="mcp-jira" />
-      <env name="MCP_GATEWAY_JWKS_URI" value="http://127.0.0.1:18501/.well-known/jwks.json" />
+      <env name="MCP_GATEWAY_JWKS_URI" value="http://127.0.0.1:18501/.well-known/mcp-jwks.json" />
       <env name="MCP_FOREIGN_URL" value="http://127.0.0.1:18931" />
       <env name="MCP_FOREIGN_ALLOW_PLAIN_HTTP" value="true" />
       <env name="MCP_FOREIGN_DISCOVERY_AUTHORIZATION" value="Token discovery-only" />
