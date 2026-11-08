@@ -27,18 +27,16 @@ class ManifestTest extends ServerTestSupport {
     }
 
     @Test
-    void isServedAtTheWellKnownPathToTheGatewayOnlyAndIsTheDocumentTheCheckBuilt() throws Exception {
+    void isServedAtTheWellKnownPathWithoutAuthenticationAndIsTheDocumentTheCheckBuilt() throws Exception {
         String path = "/.well-known/mcp-manifest";
 
-        java.net.http.HttpResponse<String> served = get(path, GATEWAY.manifestToken().mint().headers());
+        java.net.http.HttpResponse<String> served = get(path, java.util.Map.of());
 
         assertThat(served.statusCode()).isEqualTo(200);
         assertThat(served.headers().firstValue("Cache-Control")).hasValueSatisfying(value -> assertThat(value).contains("no-store"));
         assertThat(JSON.readTree(served.body())).isEqualTo(manifest());
         assertThat(JSON.readTree(served.body()).path("source").asString()).isEqualTo("adapter");
-        assertThat(get(path, java.util.Map.of()).statusCode()).isEqualTo(401);
-        assertThat(get(path, GATEWAY.service().mint().headers()).statusCode()).as("a token minted for calls").isEqualTo(401);
-        assertThat(get(path, GATEWAY.user().mint().headers()).statusCode()).as("a user is not the gateway pulling").isEqualTo(401);
+        assertThat(get(path, java.util.Map.of("Authorization", "Bearer not-a-jwt")).statusCode()).as("a header that arrives is ignored").isEqualTo(200);
     }
 
     private JsonNode manifest() {

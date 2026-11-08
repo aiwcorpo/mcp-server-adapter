@@ -50,7 +50,7 @@ class GatewayOnlyAccessTest extends ServerTestSupport {
     void aTokenOfAnotherPurposeCannotPushPolicyDataNorCallAndTheAdapterTakesTheGatewaysPush() throws Exception {
         String push = "/.well-known/mcp-policy-data";
         assertThat(postTo(push, "{}", GATEWAY.service().mint().headers()).statusCode()).as("a call token pushing").isEqualTo(401);
-        assertThat(postTo(push, "{}", GATEWAY.manifestToken().mint().headers()).statusCode()).as("a manifest token pushing").isEqualTo(401);
+        assertThat(postTo(push, "{}", GATEWAY.service().use("manifest").mint().headers()).statusCode()).as("a token of the removed purpose manifest pushing").isEqualTo(401);
         assertThat(post(GET_ISSUE, GATEWAY.service().use(TestGateway.USE_POLICY_DATA).mint().headers()).statusCode())
                 .as("a policy-data token calling").isEqualTo(401);
         assertThat(FOREIGN.calls()).isEmpty();
