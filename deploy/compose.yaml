@@ -9,6 +9,10 @@
 # (the adapter hands it the credential of the calling user); add that network under the service and under "networks:" as in
 # docker-compose.demo.yml. Closed network: MCP_REGISTRY in a .env file next to this one points the image to your registry.
 
+# Every deploy directory is called "deploy": without a name of its own, two servers on one host would share one Compose
+# project and its state volume (certificate and cursor key).
+name: mcp-adapter
+
 services:
   mcp-adapter:
     image: ${MCP_REGISTRY:-ghcr.io/aiwcorpo}/mcp-server-adapter:${MCP_ADAPTER_VERSION:-2.0.0}
