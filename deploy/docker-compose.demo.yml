@@ -1,7 +1,7 @@
 # Reference fragment for the adapter demo (Jira through sooperset/mcp-atlassian 0.23.1). It is not started by this repository: ws-01
 # merges it into the dev stack. The adapter takes the place of the native mcp-jira (same server id and network alias), so the
-# gateway must have the server mcp-jira added with adapter=true (at creation, it cannot be changed later) and the native mcp-jira
-# container must not run at the same time.
+# server mcp-jira is added in the gateway at the adapter's address: the gateway reads from the manifest that it is an adapter and keeps
+# that kind for good. The native mcp-jira container must not run at the same time.
 #
 # Variables: ADAPTER_IMAGE (mcp-server-adapter:<tag>) and MCP_GATEWAY_JWKS_URI (the public key set of the gateway). The adapter has no
 # policy settings: it has no policies and takes the policy data the gateway pushes without evaluating it (starter 4.0.0). It speaks plain http
