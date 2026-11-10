@@ -1,170 +1,109 @@
 # mcp-server-adapter
 
-A Java sidecar that puts a foreign MCP server (one whose code the platform does not control) behind `mcp-gateway`.
+A sidecar that puts a third-party MCP server, one whose code you do not control, behind the aiwcorpo MCP gateway. For platform operators who want to connect a ready-made open source or vendor server.
 
-A foreign server knows nothing about the platform: it does not verify the internal JWT, does not know the policies and does not
-accept the credential in the platform's form. The adapter does that for it. The gateway connects to its address; it accepts only calls with the
-gateway's internal JWT (like every server built on the starter), reads the foreign server's tool list at start, serves it as a manifest for
-the gateway to pull and forwards calls with the credential of the user who made them.
+The adapter reads the tool list of the third-party server, serves it to the gateway as a manifest and forwards each call with the credential of the user who made it. One adapter serves one server and one system.
 
-It is for platform operators who want to connect a ready-made MCP server (open source or from a vendor) to any system of the
-platform: the system id is any `SystemId` of the contracts (`^[a-z][a-z0-9]{1,30}$`) and nothing in the adapter enumerates systems. It is one
-container image configured through environment variables, not a library or a template. It has no policies and no resource types of its own:
-the gateway decides every call, and an administrator classifies the tools at approval.
-
-Stack: Java 25, Spring Boot 4.1.0, `mcp-platform-starter` 4.0.0 (the version in `pom.xml`), `mcp-contracts` 7.0.0.
-License: Apache-2.0 ([LICENSE](LICENSE), [NOTICE](NOTICE)).
-Changes: [CHANGELOG.md](CHANGELOG.md). Contributing: [CONTRIBUTING.md](CONTRIBUTING.md). Vulnerabilities: [SECURITY.md](SECURITY.md).
-
-Operator and developer guides for the whole platform are in [mcp-docs](https://github.com/aiwcorpo/mcp-docs):
-`docs/operator/foreign-servers.md` (connecting a foreign server) and `docs/developer/adapter.md` (what the adapter does to the tools).
-
-## How it works
-
-```
-MCP client -> gateway --TLS + JWT C2 + X-MCP-Credential--> adapter --HTTP + Authorization: Token <PAT>--> foreign MCP server -> system
-                 |                                           ^
-                 +--- GET /.well-known/mcp-manifest ---------+   (pulled by the gateway; POST /.well-known/mcp-policy-data is pushed)
-```
-
-1. Start. The adapter waits (up to `startup-wait`, 90 s by default) until the foreign server answers `tools/list`, rewrites every
-   `inputSchema` into a closed, bounded schema and drops the tools it cannot bound.
-2. Manifest. The starter builds a C6 manifest with `source: adapter` (no `risk` and `action`, empty `resourceRefs`), checks it against the
-   gateway's rules and serves it at `GET /.well-known/mcp-manifest` for the gateway to pull when an administrator adds the address, on a
-   refresh and in its runtime loop. Nothing is approved by pulling it: each tool is `pending_approval` until an administrator classifies it in the
-   portal. An unclassified tool is hidden by the gateway. The adapter has no policy engine; it takes the policy data pushed to
-   `POST /.well-known/mcp-policy-data`, checks its shape and decides nothing with it.
-3. Call. The starter checks the caller and the arguments against the published schema, and the adapter refuses a classification other
-   than `READ_ONLY`. The gateway has already decided the call by group and the emergency overrides. Only then does the adapter open a one-call MCP session to the foreign server with an
-   `Authorization` header built from the user's credential, and return the result as untrusted data.
-
-What the adapter guarantees:
-
-- Only the gateway can call it. A request without the `mcp-gateway` certificate and a valid internal JWT gets `401`; `/actuator/health`
-  is the only path without a JWT.
-- It uses the credential of the calling user, never one of its own. The session to the foreign server lives for one call, redirects are
-  not followed, and nothing the foreign server answered is logged or copied into errors.
-- Arguments outside the published schema are refused as `invalid_argument` without contacting the foreign server.
-- Results are `UntrustedText`: normalized (no control, bidirectional or zero-width characters) and cut to `result-max-chars`. Non-text
-  content is dropped.
-- Every error the foreign server reports gives the same `not_found_or_denied`. Exceptions: HTTP 401 at the transport gives
-  `credential_required`, an unreachable or slow server gives `upstream_unavailable`, an oversized answer gives `internal_error`.
-  The technical reason goes to the log (`event=foreign_call_failed`) and to the counter `mcp_adapter_foreign_failures_total{reason}`.
-- Only tools classified `READ_ONLY` are allowed, because tools of a foreign server have no `resourceRefs` and a write has no resource scope.
-  The gateway sends the classification in the claims `mcp_risk` and `mcp_action`; a call without them is refused with `401`.
-
-A tool is skipped (log line `event=foreign_tool_skipped` with the reason) when its schema cannot be bounded: an open map, a union of
-two types, recursion, a list without `items`, depth above 8, a name that breaks the contract, more than 2000 schema nodes, or hidden
-characters in names, enums or argument descriptions.
-
-## Build and test
-
-JDK 25 is required. The tests need no container runtime: the foreign server is a stub inside the test JVM.
-The platform artifacts (`mcp-platform-starter`, `mcp-contracts`) come from Maven Central; no registry login is needed.
+## Quick start
 
 ```bash
-./mvnw -B verify                        # tests and target/mcp-server-adapter.jar
-docker build -t mcp-server-adapter:dev .
+cd deploy
+# fill in MCP_SERVER_ID, MCP_GATEWAY_JWKS_URI, MCP_CONNECT_URL and MCP_FOREIGN_URL in mcp-adapter.env
+docker compose up -d
+docker compose logs mcp-adapter | grep event=tls_certificate
 ```
 
-### Run locally
+Then the platform operator adds `https://<this host>:8443/mcp` in the portal. Full steps: [deploy/README.md](deploy/README.md).
 
-`.run/` has two IntelliJ configurations, as the native servers have. Start the foreign server first: the demo one, from the image
-pinned in the Demo section below, which must already be in your local Docker (the startup waits up to 90 s for it):
+## What to expect
 
-```bash
-docker run -d --rm --name adapter-foreign-dev -p 127.0.0.1:18931:8000 -e JIRA_URL=http://localhost:18081 \
-  -e JIRA_PERSONAL_TOKEN=placeholder-never-used -e ALLOW_GLOBAL_CRED_FALLBACK=false -e TOOLSETS=all \
-  -e ENABLED_TOOLS=jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions \
-  ghcr.io/sooperset/mcp-atlassian@sha256:5b7c9b64d4eb3210cab74be8bf3e6aeea9ed14f3042dc59ba5c5287bd4dbe466 \
-  --transport streamable-http --port 8000 --host 0.0.0.0
-```
-
-Then start `LocalGateway` (the gateway of `mcp-platform-test` 4.0.0 on `http://127.0.0.1:18500/mcp`, needs the artifact in `~/.m2`:
-`./mvnw verify` of the starter) and `McpServerAdapter (dev, behind LocalGateway)`. `tools/list` works with any
-`Authorization: Bearer <token>`. `tools/call` answers `unauthenticated`: LocalGateway signs no `mcp_risk` and `mcp_action`, which an
-adapter requires, so calls need a real gateway. Stop the foreign server with `docker stop adapter-foreign-dev`.
-
-The container runs as the numeric user 10001:10001 on a glibc base (the native Cedar library does not work on musl) and listens
-on 8443. The adapter writes only to its state directory (`/var/lib/mcp/state`, a volume): the generated certificate and the cursor key. The release image is published as
-`ghcr.io/aiwcorpo/mcp-server-adapter:<version>` by `.github/workflows/release.yml`.
+- Only tools classified `READ_ONLY` work. A tool that changes data stays hidden, because tools of a third-party server name no resource a write could be scoped to.
+- The server gets the credential of the calling user, never a shared one. Keep it on a network that only the adapter shares with it.
+- Tools whose input schema cannot be bounded (open maps, unions of two types, recursion, lists without `items`, depth above 8) are skipped. The log line `event=foreign_tool_skipped` gives the reason.
+- Every error of the server reaches the model as `not_found_or_denied`, except `credential_required` (HTTP 401) and `upstream_unavailable`. Check how the server reports errors first: an error returned as ordinary text reaches the model unchanged.
+- A change in the tool list needs a restart of the adapter. The gateway pulls the new manifest within a minute and the changed tools wait for classification again.
 
 ## Configuration
 
-Everything is set through environment variables read from `src/main/resources/application.yml`. The generated table is in mcp-docs:
-`docs/reference/env-adapter.md`. Settings of the starter (JWT, TLS, Redis) are the same as for any server built on it, except that an adapter has no `policy-data` and no `MCP_POLICY_*`: it has no policies of its own and decides nothing with the policy data the gateway pushes.
+Required, in `deploy/mcp-adapter.env`:
 
-The settings you need to get started:
+| Variable | Description |
+| --- | --- |
+| `MCP_SERVER_ID` | `mcp-<system>`, where `<system>` is the system id in the broker (2 to 31 lowercase letters and digits, starting with a letter) |
+| `MCP_GATEWAY_JWKS_URI` | key set of the gateway: `https://<platform>/.well-known/mcp-jwks.json` |
+| `MCP_CONNECT_URL` | portal page where a user connects an account: `https://<platform>/connections?system={system}` |
+| `MCP_FOREIGN_URL` | address of the third-party server, `https` |
 
-- `MCP_SERVER_ID`: `mcp-<system>` with any `SystemId`, no default. The `serverId` the gateway derives from the manifest; the server is an adapter because the manifest says `source: adapter`, and that never changes.
-- `MCP_FOREIGN_URL`, `MCP_FOREIGN_PATH`: the foreign server and its MCP path (`/mcp`). https is required; plain http only with
-  `MCP_FOREIGN_ALLOW_PLAIN_HTTP=true` in the `dev` profile.
-- `MCP_FOREIGN_AUTHORIZATION_FORMAT`: how the credential becomes a header, `Token {credential}` by default. Start requires
-  `{credential}` exactly once; a fixed value would mean a shared account instead of the user's identity.
-- `MCP_FOREIGN_DISCOVERY_AUTHORIZATION`: a header used only for the startup `tools/list`, for servers that refuse any request without one.
-- `MCP_ADAPTER_TOOLS_INCLUDE`, `MCP_ADAPTER_STRIP_PREFIX`: which tools to publish and which prefix to remove from their names.
-- `MCP_GATEWAY_JWKS_URI`: the public key set of the gateway, `https://<domain>/.well-known/mcp-jwks.json`.
-- Optional: `MCP_TLS_CERT` and `MCP_TLS_KEY`, or `MCP_TLS_KEYSTORE` with `MCP_TLS_STORE_PASSWORD`, for your own certificate (otherwise the adapter
-  generates a self-signed one into `MCP_STATE_DIR` and logs its fingerprint at start), `MCP_PLAIN_HTTP=true` for no TLS inside the Docker network of the
-  platform, and `MCP_REDIS_HOST` and `MCP_PAGING_CURSOR_KEY` for several instances behind a balancer.
+Often needed:
 
-Limits (`aiwcorpo.mcp.adapter.limits.*`) and timeouts (`foreign.connect-timeout`, `request-timeout`, `max-response-size`) are in
-`AdapterProperties`. The adapter submits nothing: the gateway pulls the manifest, so a change of the tool list (a restart of the adapter) reaches the
-gateway at its next pull, within a minute, and the changed tools wait for classification again.
+| Variable | Description |
+| --- | --- |
+| `MCP_FOREIGN_PATH` | MCP path of the server, default `/mcp` |
+| `MCP_FOREIGN_AUTHORIZATION_FORMAT` | how the credential becomes a header, default `Token {credential}`; `{credential}` must appear exactly once |
+| `MCP_FOREIGN_DISCOVERY_AUTHORIZATION` | header for the startup `tools/list`, for servers that refuse a request without one |
+| `MCP_ADAPTER_TOOLS_INCLUDE` | tools to publish, comma-separated; empty means all that can be bounded |
+| `MCP_ADAPTER_STRIP_PREFIX` | prefix to remove from tool names |
 
-## Demo: sooperset/mcp-atlassian 0.23.1 for Jira
+Own certificate, Redis for several instances and limits are described in the same file and in `src/main/resources/application.yml`.
 
-The demo wraps [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian) (MIT) with four read tools. The image is pinned by
-index digest:
+## Run a third-party MCP server behind the adapter
 
-```
-ghcr.io/sooperset/mcp-atlassian@sha256:5b7c9b64d4eb3210cab74be8bf3e6aeea9ed14f3042dc59ba5c5287bd4dbe466
-```
+The example puts [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian) 0.23.1 (MIT) in front of Jira with four read tools. It runs on a test stack: the third-party server speaks plain `http`, which the adapter accepts only with the `devstack` profile. The Compose fragment with all settings is `deploy/docker-compose.demo.yml`.
 
-The full Compose fragment is `deploy/docker-compose.demo.yml`; how to install an adapter in general, with the steps that
-add and remove the server without restarting anything, is in [deploy/README.md](deploy/README.md). Points that are not obvious from it:
+1. Pull the image, pinned by digest:
 
-- `ENABLED_TOOLS=jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions`. A write tool would stay hidden
-  (`tool_disabled`), because the gateway allows only `READ_ONLY` for adapter tools.
-- `JIRA_PERSONAL_TOKEN=placeholder-never-used` is a filler that is never used: without it the server does not list the Jira tools. `ALLOW_GLOBAL_CRED_FALLBACK`
-  is off, so a call without a credential in the header ends with `401` there.
-- The server also refuses `initialize` without `Authorization`, hence `MCP_FOREIGN_DISCOVERY_AUTHORIZATION=Token discovery-only`.
-- The foreign container is hardened (`read_only`, `cap_drop: [ALL]`, `no-new-privileges`, memory and process limits) and sits in two
-  internal networks only, so it does not see other servers.
-- The adapter sends `Authorization: Token <PAT>`; the server passes it to Jira as `Bearer <PAT>`.
+    ```bash
+    docker pull ghcr.io/sooperset/mcp-atlassian@sha256:5b7c9b64d4eb3210cab74be8bf3e6aeea9ed14f3042dc59ba5c5287bd4dbe466
+    ```
 
-After the schema rewrite the tools are `get_issue`, `search`, `get_all_projects` and `get_transitions` (prefix `jira_` removed), all
-with `readOnlyHint: true`.
+2. Merge `deploy/docker-compose.demo.yml` into your test stack. Set `ADAPTER_IMAGE` (`mcp-server-adapter:<tag>`) and `MCP_GATEWAY_JWKS_URI`. If the stack already runs a native `mcp-jira`, stop it: the adapter takes its server id.
 
-To check the real image, start a one-off container on the default Docker network (port on 127.0.0.1 only, no access to the stack) and run
-the test profile; the test starts a fake Jira on `127.0.0.1:18932` (Bearer `alice-pat`, `bob-pat`; issue `ABC-1`):
+3. Keep these settings of the third-party server (they are in the fragment):
+
+    ```yaml
+    ENABLED_TOOLS: jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions
+    JIRA_PERSONAL_TOKEN: placeholder-never-used
+    ALLOW_GLOBAL_CRED_FALLBACK: "false"
+    ```
+
+    `ENABLED_TOOLS` lists read tools only. The token is a filler: without it the server does not list the Jira tools. With the fallback off, a call without a credential ends with 401.
+
+4. Keep these settings of the adapter:
+
+    ```yaml
+    MCP_FOREIGN_URL: http://mcp-atlassian:8000
+    MCP_FOREIGN_ALLOW_PLAIN_HTTP: "true"
+    MCP_FOREIGN_AUTHORIZATION_FORMAT: "Token {credential}"
+    MCP_FOREIGN_DISCOVERY_AUTHORIZATION: "Token discovery-only"
+    MCP_ADAPTER_STRIP_PREFIX: jira_
+    ```
+
+    The discovery header is needed because the server refuses `initialize` without `Authorization`. The adapter sends `Token <PAT>` and the server passes it to Jira as `Bearer <PAT>`.
+
+5. Start the stack:
+
+    ```bash
+    docker compose up -d
+    ```
+
+    The adapter waits up to 90 seconds for the third-party server to answer `tools/list`.
+
+6. In the portal, add the server `http://mcp-jira.internal:8443/mcp` with "allow plain http" (the network alias from the fragment), approve the connection and approve the tools. They are `get_issue`, `search`, `get_all_projects` and `get_transitions`, all read-only.
+
+The third-party container is the least trusted one in the stack. The fragment runs it read-only, without capabilities and with memory limits, on two internal networks (one shared with the adapter, one with Jira), so it cannot see other servers.
+
+## Build
 
 ```bash
-docker run -d --rm --name adapter-probe -p 127.0.0.1:18931:8000 \
-  -e JIRA_URL=http://host.docker.internal:18932 -e JIRA_PERSONAL_TOKEN=placeholder-never-used -e TOOLSETS=all \
-  -e ENABLED_TOOLS=jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions \
-  ghcr.io/sooperset/mcp-atlassian@sha256:5b7c9b64d4eb3210cab74be8bf3e6aeea9ed14f3042dc59ba5c5287bd4dbe466 \
-  --transport streamable-http --port 8000 --host 0.0.0.0
-./mvnw -B test -Preal-image -Dtest=RealImageTest
+export JAVA_HOME=<path to JDK 25>
+./mvnw -B verify
 ```
 
-## Security
+The jar is `target/mcp-server-adapter.jar`; `docker build -t mcp-server-adapter:dev .` builds the image. The tests need no Docker. Working on the code: [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Invariants of this component. The platform-wide list is in
-[mcp-docs](https://github.com/aiwcorpo/mcp-docs) under `docs/security/invariants.md`.
+## More
 
-- Traffic only from the gateway (the internal JWT of the right purpose on every path); no anonymous path except health.
-- The user's credential reaches the foreign server, never a shared one. The adapter holds no secrets besides its TLS key.
-- Fail closed: a missing classification, a schema that cannot be bounded and a classification other than `READ_ONLY` all mean refusal.
-- Text from the foreign server reaches the model only as untrusted data, and tool descriptions are pinned by the hash in the manifest that
-  the administrator approves.
-- One audit event `tool_call` per call, with the gateway's `requestId` (also sent to the foreign server as `X-Request-Id`), without
-  arguments or results.
+- [deploy/README.md](deploy/README.md): installation, adding the server to the platform, upgrade from 1.x
+- [CHANGELOG.md](CHANGELOG.md), [SECURITY.md](SECURITY.md)
 
-Residual risk: invariant 8 (the same answer for "does not exist" and "no access") depends on the foreign server. If it returns an error
-as an ordinary result, for example the text "Issue does not exist", that text reaches the model and shows the difference. The adapter
-cannot catch this. Check how a server reports errors before connecting it (for mcp-atlassian 0.23.1 a Jira error comes back as
-`isError`, verified on the real image).
-
-The adapter also does not refresh the manifest at runtime (a changed tool list needs a restart), does not keep sessions between calls
-(four HTTP requests per call) and does not judge whether the foreign server is safe itself.
+Apache License 2.0.
