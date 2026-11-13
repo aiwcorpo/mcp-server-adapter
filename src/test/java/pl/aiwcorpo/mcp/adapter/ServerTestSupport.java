@@ -56,6 +56,7 @@ abstract class ServerTestSupport {
                 () -> "jira_get_issue,jira_search,jira_get_all_projects,jira_get_transitions,jira_add_comment,jira_transition_issue");
         registry.add("aiwcorpo.mcp.adapter.tools.strip-prefix", () -> "jira_");
         registry.add("aiwcorpo.mcp.adapter.limits.result-max-chars", () -> "2000");
+        registry.add("aiwcorpo.mcp.adapter.limits.calls-in-flight", () -> "2");
     }
 
     @LocalServerPort

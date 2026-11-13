@@ -10,6 +10,11 @@ import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -242,6 +247,43 @@ class CallToolTest extends ServerTestSupport {
         assertThat(String.join("\n", lines)).doesNotContain(PAT_VALUE, "jira.corp.test", "ABC-404 at");
         assertThat(counter("result_error")).isEqualTo(before + 1);
         assertThat(counter("http_5xx")).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
+    void callsBeyondTheConfiguredNumberInFlightAreRefusedWithoutReachingTheForeignServer() throws Exception {
+        CountDownLatch release = new CountDownLatch(1);
+        FOREIGN.onCall(call -> {
+            try {
+                release.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
+            return Reply.text(ISSUE_JSON);
+        });
+        try (McpSyncClient first = clientWithCredential(PAT); McpSyncClient second = clientWithCredential(PAT);
+             McpSyncClient third = clientWithCredential(PAT)) {
+            ExecutorService callers = Executors.newFixedThreadPool(2);
+            try {
+                Future<McpSchema.CallToolResult> a = callers.submit(() -> call(first, "get_issue", Map.of("issue_key", "ABC-1")));
+                Future<McpSchema.CallToolResult> b = callers.submit(() -> call(second, "get_issue", Map.of("issue_key", "ABC-1")));
+                long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                while (FOREIGN.calls().size() < 2 && System.nanoTime() < until) {
+                    Thread.sleep(10);
+                }
+                assertThat(FOREIGN.calls()).hasSize(2);
+
+                McpSchema.CallToolResult refused = call(third, "get_issue", Map.of("issue_key", "ABC-1"));
+                assertThat(FOREIGN.calls()).hasSize(2);
+                assertError(refused, "upstream_unavailable");
+
+                release.countDown();
+                assertThat(a.get(10, TimeUnit.SECONDS).isError()).isFalse();
+                assertThat(b.get(10, TimeUnit.SECONDS).isError()).isFalse();
+            } finally {
+                release.countDown();
+                callers.shutdownNow();
+            }
+        }
     }
 
     private double divergences(String classified, String hints) {

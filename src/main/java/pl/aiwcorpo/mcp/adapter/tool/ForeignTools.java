@@ -3,6 +3,7 @@ package pl.aiwcorpo.mcp.adapter.tool;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Semaphore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
@@ -26,9 +27,11 @@ public record ForeignTools(List<ForeignTool> tools) {
     public List<ToolCallback> callbacks(ForeignMcpClient client, String system, AdapterProperties properties, MeterRegistry meters) {
         ForeignResult results = new ForeignResult(properties.limits().resultMaxChars());
         ForeignFailures failures = new ForeignFailures(meters);
+        Semaphore inFlight = new Semaphore(properties.limits().callsInFlight());
         List<ToolCallback> accepted = new ArrayList<>();
         for (ForeignTool tool : tools) {
-            ToolCallback callback = new ForeignToolCallback(tool, client, system, properties.foreign().authorizationFormat(), results, failures);
+            ToolCallback callback = new ForeignToolCallback(tool, client, system, properties.foreign().authorizationFormat(), results, failures,
+                    inFlight);
             try {
                 new ToolRiskRegistry(ToolRiskRegistry.Unclassified.FAIL).register(callback);
                 accepted.add(callback);

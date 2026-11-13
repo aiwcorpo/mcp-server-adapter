@@ -30,7 +30,7 @@ public final class Fixtures {
 
     public static AdapterProperties.Limits limits() {
         return new AdapterProperties.Limits(4096, java.util.Map.of("body", 32768, "jql", 2048), 100, -2147483648L,
-                2147483647L, 2000, 1000, 256, 2000, 100000);
+                2147483647L, 2000, 1000, 256, 2000, 100000, 8);
     }
 
     public static JsonNode tree(String json) {
