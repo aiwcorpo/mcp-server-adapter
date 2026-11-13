@@ -5,9 +5,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import pl.aiwcorpo.mcp.adapter.config.AdapterProperties;
+import pl.aiwcorpo.mcp.manifest.PatternGrammar;
 import pl.aiwcorpo.mcp.platform.text.TextHygiene;
 import pl.aiwcorpo.mcp.platform.text.UntrustedText;
 import tools.jackson.databind.JsonNode;
@@ -277,7 +279,7 @@ public final class SchemaTightener {
             out.put("minLength", min.asLong());
         }
         String pattern = flat.path("pattern").asString(null);
-        if (pattern != null && anchored(pattern) && compiles(pattern)) {
+        if (pattern != null && anchored(pattern) && compiles(pattern) && linear(pattern)) {
             out.put("pattern", pattern);
         }
         return out;
@@ -410,6 +412,8 @@ public final class SchemaTightener {
     }
 
     /** {@code ^...$} with the last {@code $} not escaped and no alternation outside a group or a class, as the starter requires. */
+    private static final Pattern SEPARATED_REPEAT = Pattern.compile("\\(\\?:(\\\\?[-_:/,]|\\\\[.])(\\\\d|\\[[^\\]\\[\\\\^]*\\])\\+\\)");
+
     static boolean anchored(String pattern) {
         if (!pattern.startsWith("^") || !pattern.endsWith("$")) {
             return false;
@@ -440,6 +444,27 @@ public final class SchemaTightener {
             }
         }
         return true;
+    }
+
+    /**
+     * The pattern is matched against the caller's argument on a request thread, so the foreign server may only set one that matches in
+     * linear time: the grammar the contracts require of idPattern and scopePattern. One form outside that grammar is linear too and common
+     * in identifiers ({@code -\d+(?:-\d+)*}): a repeated group that starts with a separator its repeated atom cannot match, so the
+     * separators fix where each repetition starts. It is checked as if the atom were not repeated.
+     */
+    static boolean linear(String pattern) {
+        Matcher group = SEPARATED_REPEAT.matcher(pattern);
+        StringBuilder flat = new StringBuilder();
+        while (group.find()) {
+            String separator = group.group(1).substring(group.group(1).length() - 1);
+            String atom = group.group(2);
+            if (Pattern.compile(atom).matcher(separator).matches()) {
+                return false;
+            }
+            group.appendReplacement(flat, Matcher.quoteReplacement("(?:" + group.group(1) + atom + ")"));
+        }
+        group.appendTail(flat);
+        return PatternGrammar.violation(flat.toString()) == null;
     }
 
     private static boolean compiles(String pattern) {

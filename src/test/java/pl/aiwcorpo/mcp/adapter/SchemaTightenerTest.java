@@ -135,6 +135,24 @@ class SchemaTightenerTest {
     }
 
     @Test
+    void aPatternThatBacktracksOnRepeatedInputIsDroppedNotKept() {
+        ObjectNode schema = tighten("""
+                {"type":"object","properties":{"p":{"type":"string","pattern":"^(a+)+$"},"q":{"type":"string","pattern":"^(a|aa)+$"},
+                 "r":{"type":"string","pattern":"^(([a-z])+.)+[A-Z]([a-z])+$"},"s":{"type":"string","pattern":"^(.*a){12}$"},
+                 "t":{"type":"string","pattern":"^[A-Z][A-Z0-9_]+-\\\\d+(?:-\\\\d+)*$"},"u":{"type":"string","pattern":"^[a-z]+(?:-[a-z-]+)*$"},
+                 "v":{"type":"string","pattern":"^[0-9]+(?:.\\\\d+)*$"}}}""")
+                .schema().orElseThrow();
+
+        assertThat(schema.at("/properties/p").has("pattern")).isFalse();
+        assertThat(schema.at("/properties/q").has("pattern")).isFalse();
+        assertThat(schema.at("/properties/r").has("pattern")).isFalse();
+        assertThat(schema.at("/properties/s").has("pattern")).isFalse();
+        assertThat(schema.at("/properties/u").has("pattern")).isFalse();
+        assertThat(schema.at("/properties/v").has("pattern")).isFalse();
+        assertThat(schema.at("/properties/t/pattern").asString()).isEqualTo("^[A-Z][A-Z0-9_]+-\\d+(?:-\\d+)*$");
+    }
+
+    @Test
     void anEnumNeedsNoLength() {
         ObjectNode schema = tighten("""
                 {"type":"object","properties":{"kind":{"type":"string","enum":["a","b"]}}}""").schema().orElseThrow();
