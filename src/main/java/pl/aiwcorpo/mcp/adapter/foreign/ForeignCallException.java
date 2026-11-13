@@ -34,7 +34,8 @@ public final class ForeignCallException extends RuntimeException {
         TIMEOUT("timeout"),
         OVERSIZE("oversize"),
         MALFORMED("malformed"),
-        CREDENTIAL_REJECTED("credential_rejected");
+        CREDENTIAL_REJECTED("credential_rejected"),
+        BUSY("busy");
 
         private final String label;
 

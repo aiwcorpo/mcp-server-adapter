@@ -27,6 +27,8 @@ import pl.aiwcorpo.mcp.adapter.config.AdapterProperties;
 import pl.aiwcorpo.mcp.adapter.foreign.ForeignCallException.Kind;
 import pl.aiwcorpo.mcp.adapter.foreign.ForeignCallException.Reason;
 import tools.jackson.core.JacksonException;
+import tools.jackson.core.StreamReadConstraints;
+import tools.jackson.core.json.JsonFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -44,7 +46,12 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public class ForeignMcpClient {
 
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    /**
+     * The tree of one answer costs far more heap than its bytes (a 2 MB body of empty objects is about 60 MB), so the number of tokens is
+     * bounded as well; a tools/list of mcp-atlassian takes about 100 tokens per tool.
+     */
+    private static final JsonMapper JSON = JsonMapper.builder(JsonFactory.builder()
+            .streamReadConstraints(StreamReadConstraints.builder().maxTokenCount(100_000).build()).build()).build();
     private static final String PROTOCOL_VERSION = "2025-06-18";
     private static final int MAX_PAGES = 20;
     /** What the server puts in these headers is sent back to it, so only visible ASCII of a sane length is accepted. */

@@ -148,6 +148,19 @@ class ForeignMcpClientTest {
                         ex -> assertThat(ex.kind()).isEqualTo(ForeignCallException.Kind.OVERSIZE));
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void anAnswerWithMoreTokensThanTheTreeLimitIsMalformedThoughItsBytesFit(boolean eventStream) {
+        String content = "{}" + ",{}".repeat(200_000);
+        stub.eventStream(eventStream).onCall(call -> new Reply(200, "{\"content\":[" + content + "]}"));
+
+        assertThatThrownBy(() -> client().callTool("jira_get_issue", args(), "Token a", "r"))
+                .isInstanceOfSatisfying(ForeignCallException.class, ex -> {
+                    assertThat(ex.kind()).isEqualTo(ForeignCallException.Kind.UNAVAILABLE);
+                    assertThat(ex.reason()).isEqualTo(ForeignCallException.Reason.MALFORMED);
+                });
+    }
+
     @Test
     void aServerThatRefusesTheHeaderlessDiscoveryIsReportedAsDenied() {
         assertThatThrownBy(() -> client().listTools(null)).isInstanceOfSatisfying(ForeignCallException.class, ex -> {
