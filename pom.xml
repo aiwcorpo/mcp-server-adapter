@@ -43,6 +43,11 @@
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <mcp-platform.version>4.0.0</mcp-platform.version>
+        <!-- The versions Spring Boot 4.1.2 manages, raised here because the parent must stay at the starter's 4.1.0; drop them when the
+             parent moves to 4.1.2 or newer. -->
+        <jackson-bom.version>3.1.7</jackson-bom.version>
+        <tomcat.version>11.0.27</tomcat.version>
+        <spring-framework.version>7.0.10</spring-framework.version>
         <!-- The test against the real mcp-atlassian image needs a container and a fake Jira on the host: profile real-image, see README. -->
         <real.image.exclude>**/RealImage*</real.image.exclude>
     </properties>
