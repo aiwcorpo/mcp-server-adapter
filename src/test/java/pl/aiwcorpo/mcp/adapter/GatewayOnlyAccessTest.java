@@ -2,10 +2,15 @@ package pl.aiwcorpo.mcp.adapter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
@@ -95,6 +100,20 @@ class GatewayOnlyAccessTest extends ServerTestSupport {
         assertThat(get("/actuator/health").statusCode()).isEqualTo(200);
         assertThat(get("/actuator/prometheus").statusCode()).isEqualTo(401);
         assertThat(get("/mcp-manifest").statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void aBodyAnnouncedAboveTheLimitIsRefusedWithoutWaitingForItsBytes() throws Exception {
+        try (Socket socket = new Socket("127.0.0.1", port)) {
+            socket.setSoTimeout(2000);
+            OutputStream out = socket.getOutputStream();
+            out.write(("POST " + ENDPOINT + " HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer x\r\n"
+                    + "Content-Type: application/json\r\nContent-Length: 2097152\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+            out.flush();
+            String statusLine = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII)).readLine();
+            assertThat(statusLine).startsWith("HTTP/1.1 413");
+        }
+        assertThat(FOREIGN.calls()).isEmpty();
     }
 
     private HttpResponse<String> post(String body, Map<String, String> headers) throws Exception {
