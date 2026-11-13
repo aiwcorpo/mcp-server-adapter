@@ -5,7 +5,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Matcher;
+import java.util.regex.MatchResult;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import pl.aiwcorpo.mcp.adapter.config.AdapterProperties;
@@ -411,9 +411,13 @@ public final class SchemaTightener {
         return path.isEmpty() ? "the arguments" : path;
     }
 
-    /** {@code ^...$} with the last {@code $} not escaped and no alternation outside a group or a class, as the starter requires. */
-    private static final Pattern SEPARATED_REPEAT = Pattern.compile("\\(\\?:(\\\\?[-_:/,]|\\\\[.])(\\\\d|\\[[^\\]\\[\\\\^]*\\])\\+\\)");
+    /** {@code (?:S A+)*} or {@code (?:S A+)+}, greedy: S a literal separator, A {@code \d} or a simple class. */
+    private static final Pattern SEPARATED_REPEAT =
+            Pattern.compile("\\(\\?:(\\\\?[-_:/,]|\\\\[.])(\\\\d|\\[[^\\]\\[\\\\^]*\\])\\+\\)([*+])(?![?+])");
+    /** The variants checked are 2 to the power of the groups, so a pattern with more of them is refused. */
+    private static final int MAX_SEPARATED_REPEATS = 3;
 
+    /** {@code ^...$} with the last {@code $} not escaped and no alternation outside a group or a class, as the starter requires. */
     static boolean anchored(String pattern) {
         if (!pattern.startsWith("^") || !pattern.endsWith("$")) {
             return false;
@@ -449,22 +453,63 @@ public final class SchemaTightener {
     /**
      * The pattern is matched against the caller's argument on a request thread, so the foreign server may only set one that matches in
      * linear time: the grammar the contracts require of idPattern and scopePattern. One form outside that grammar is linear too and common
-     * in identifiers ({@code -\d+(?:-\d+)*}): a repeated group that starts with a separator its repeated atom cannot match, so the
-     * separators fix where each repetition starts. It is checked as if the atom were not repeated.
+     * in identifiers ({@code -\d+(?:-\d+)*}): a greedy repeated group that starts with a separator its repeated atom cannot match, so
+     * the separators fix where each repetition starts. Each such group is checked in two shapes, every combination of them must pass the
+     * grammar: absent (only for {@code *}), and as {@code S(?:S A)*}, where the fixed separator is what the atom before it meets and the
+     * repeated group, with the characters of S and A, is what the atom after it meets.
      */
     static boolean linear(String pattern) {
-        Matcher group = SEPARATED_REPEAT.matcher(pattern);
-        StringBuilder flat = new StringBuilder();
-        while (group.find()) {
+        List<MatchResult> groups = SEPARATED_REPEAT.matcher(pattern).results()
+                .filter(group -> outsideClassAndEscape(pattern, group.start())).toList();
+        if (groups.size() > MAX_SEPARATED_REPEATS) {
+            return false;
+        }
+        for (MatchResult group : groups) {
             String separator = group.group(1).substring(group.group(1).length() - 1);
-            String atom = group.group(2);
-            if (Pattern.compile(atom).matcher(separator).matches()) {
+            if (Pattern.compile(group.group(2)).matcher(separator).matches()) {
                 return false;
             }
-            group.appendReplacement(flat, Matcher.quoteReplacement("(?:" + group.group(1) + atom + ")"));
         }
-        group.appendTail(flat);
-        return PatternGrammar.violation(flat.toString()) == null;
+        variants:
+        for (int absent = 0; absent < 1 << groups.size(); absent++) {
+            StringBuilder variant = new StringBuilder();
+            int from = 0;
+            for (int i = 0; i < groups.size(); i++) {
+                MatchResult group = groups.get(i);
+                variant.append(pattern, from, group.start());
+                if ((absent & 1 << i) != 0) {
+                    if (group.group(3).equals("+")) {
+                        continue variants;
+                    }
+                } else {
+                    variant.append(group.group(1)).append("(?:").append(group.group(1)).append(group.group(2)).append(")*");
+                }
+                from = group.end();
+            }
+            variant.append(pattern, from, pattern.length());
+            if (PatternGrammar.violation(variant.toString()) != null) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Whether the character at {@code position} is a metacharacter: not inside a class and not escaped. */
+    private static boolean outsideClassAndEscape(String pattern, int position) {
+        boolean inClass = false;
+        for (int i = 0; i < position; i++) {
+            char c = pattern.charAt(i);
+            if (c == '\\') {
+                if (++i == position) {
+                    return false;
+                }
+            } else if (inClass) {
+                inClass = c != ']';
+            } else if (c == '[') {
+                inClass = true;
+            }
+        }
+        return !inClass;
     }
 
     private static boolean compiles(String pattern) {
