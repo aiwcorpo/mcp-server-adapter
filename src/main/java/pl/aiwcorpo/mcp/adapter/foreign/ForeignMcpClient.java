@@ -256,7 +256,8 @@ public class ForeignMcpClient {
             try {
                 HttpRequest.Builder request = HttpRequest.newBuilder(endpoint).timeout(requestTimeout).DELETE();
                 decorate(request);
-                http.send(request.build(), HttpResponse.BodyHandlers.discarding());
+                // Only the status matters; reading the body would let the server hold the thread by never ending it.
+                http.send(request.build(), HttpResponse.BodyHandlers.ofInputStream()).body().close();
             } catch (IOException | RuntimeException ex) {
                 // The session ends with the server's own timeout; nothing depends on the DELETE.
             } catch (InterruptedException ex) {

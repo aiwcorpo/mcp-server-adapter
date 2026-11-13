@@ -70,6 +70,7 @@ public final class StubForeignServer implements AutoCloseable {
     private volatile String redirectTo;
     private volatile Stream stream = Stream.NORMAL;
     private volatile String sessionIdToSend;
+    private volatile DeleteAnswer deleteAnswer = DeleteAnswer.AT_ONCE;
 
     /** How the stub treats an event stream: normally, or never sends the response, or sends it and keeps the stream open. */
     public enum Stream {
@@ -77,6 +78,13 @@ public final class StubForeignServer implements AutoCloseable {
         SILENT_FOR_EVER,
         TRICKLE_FOR_EVER,
         OPEN_AFTER_RESPONSE
+    }
+
+    /** How the stub answers the DELETE that ends a session: at once, or with headers and then a body that does not end. */
+    public enum DeleteAnswer {
+        AT_ONCE,
+        OPEN_FOR_EVER,
+        TRICKLE_FOR_EVER
     }
 
     public StubForeignServer() {
@@ -124,6 +132,11 @@ public final class StubForeignServer implements AutoCloseable {
         return this;
     }
 
+    public StubForeignServer deleteAnswer(DeleteAnswer value) {
+        this.deleteAnswer = value;
+        return this;
+    }
+
     public StubForeignServer redirectCallsTo(String location) {
         this.redirectTo = location;
         return this;
@@ -150,6 +163,7 @@ public final class StubForeignServer implements AutoCloseable {
         redirectTo = null;
         stream = Stream.NORMAL;
         sessionIdToSend = null;
+        deleteAnswer = DeleteAnswer.AT_ONCE;
     }
 
     private void handle(HttpExchange exchange) throws IOException {
@@ -158,7 +172,11 @@ public final class StubForeignServer implements AutoCloseable {
             authorizations.add(String.valueOf(authorization));
             if ("DELETE".equals(exchange.getRequestMethod())) {
                 deletes.add(String.valueOf(exchange.getRequestHeaders().getFirst("Mcp-Session-Id")));
-                exchange.sendResponseHeaders(200, -1);
+                if (deleteAnswer == DeleteAnswer.AT_ONCE) {
+                    exchange.sendResponseHeaders(200, -1);
+                } else {
+                    holdDeleteOpen(exchange);
+                }
                 return;
             }
             byte[] raw = exchange.getRequestBody().readAllBytes();
@@ -210,6 +228,23 @@ public final class StubForeignServer implements AutoCloseable {
             return;
         }
         respond(exchange, request, reply.body());
+    }
+
+    private void holdDeleteOpen(HttpExchange exchange) throws IOException {
+        exchange.sendResponseHeaders(200, 0);
+        OutputStream out = exchange.getResponseBody();
+        try {
+            // Bounded, so a test that fails does not leave the thread behind for the rest of the run.
+            for (int tick = 0; tick < 300; tick++) {
+                if (deleteAnswer == DeleteAnswer.TRICKLE_FOR_EVER) {
+                    out.write('x');
+                    out.flush();
+                }
+                Thread.sleep(100);
+            }
+        } catch (IOException | InterruptedException ex) {
+            // The client closed the connection: that is the end of the answer.
+        }
     }
 
     private void streamBadly(HttpExchange exchange, JsonNode request, Reply reply) throws IOException {
