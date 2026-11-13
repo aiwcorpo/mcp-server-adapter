@@ -64,6 +64,20 @@ class ProductionConfigurationTest {
     }
 
     @Test
+    void requestBodiesTheServerMayHoldAtOnceStayWellBelowTheHeap() throws IOException {
+        PropertySource<?> base = new YamlPropertySourceLoader().load("application.yml", new ClassPathResource("application.yml")).getFirst();
+        Object maxBody = base.getProperty("aiwcorpo.mcp.platform.internal-jwt.max-request-body");
+        Object threads = base.getProperty("server.tomcat.threads.max");
+
+        // The starter reads the body before it verifies the token, on a request thread; 576 MB is 75% of the 768m of deploy/compose.yaml.
+        assertThat(maxBody).as("max-request-body").isNotNull();
+        assertThat(threads).as("server.tomcat.threads.max").isNotNull();
+        assertThat(base.getProperty("server.tomcat.connection-timeout")).as("server.tomcat.connection-timeout").isNotNull();
+        long held = DataSize.parse(String.valueOf(maxBody)).toBytes() * Long.parseLong(String.valueOf(threads));
+        assertThat(held).isLessThan(DataSize.ofMegabytes(576).toBytes() / 2);
+    }
+
+    @Test
     void devIsReachableOnLoopbackOnly() throws IOException {
         Map<String, Object> dev = (Map<String, Object>) new YamlPropertySourceLoader()
                 .load("application-dev.yml", new ClassPathResource("application-dev.yml")).getFirst().getSource();
