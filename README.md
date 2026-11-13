@@ -1,5 +1,7 @@
 # mcp-server-adapter
 
+Part of [MCP Platform](https://github.com/aiwcorpo/mcp-platform), a self-hosted MCP gateway for companies. Documentation: [mcp.aiwcorpo.pl](https://mcp.aiwcorpo.pl/).
+
 A sidecar that puts a third-party MCP server, one whose code you do not control, behind the aiwcorpo MCP gateway. For platform operators who want to connect a ready-made open source or vendor server.
 
 The adapter reads the tool list of the third-party server, serves it to the gateway as a manifest and forwards each call with the credential of the user who made it. One adapter serves one server and one system.
