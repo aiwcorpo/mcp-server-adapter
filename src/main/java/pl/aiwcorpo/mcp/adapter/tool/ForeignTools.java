@@ -24,14 +24,15 @@ public record ForeignTools(List<ForeignTool> tools) {
      * with a destructive word under a lower risk, a title it does not accept) leaves that one tool out with a log line, instead of stopping the
      * start of the whole adapter on the word of a foreign server.
      */
-    public List<ToolCallback> callbacks(ForeignMcpClient client, String system, AdapterProperties properties, MeterRegistry meters) {
+    public List<ToolCallback> callbacks(ForeignMcpClient client, String system, List<String> acceptedCredentialTypes,
+                                        AdapterProperties properties, MeterRegistry meters) {
         ForeignResult results = new ForeignResult(properties.limits().resultMaxChars());
         ForeignFailures failures = new ForeignFailures(meters);
         Semaphore inFlight = new Semaphore(properties.limits().callsInFlight());
         List<ToolCallback> accepted = new ArrayList<>();
         for (ForeignTool tool : tools) {
             ToolCallback callback = new ForeignToolCallback(tool, client, system, properties.foreign().authorizationFormat(), results, failures,
-                    inFlight);
+                    inFlight, acceptedCredentialTypes);
             try {
                 new ToolRiskRegistry(ToolRiskRegistry.Unclassified.FAIL).register(callback);
                 accepted.add(callback);

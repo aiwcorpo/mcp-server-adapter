@@ -6,8 +6,11 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
+import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.spec.McpSchema;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -284,6 +287,27 @@ class CallToolTest extends ServerTestSupport {
                 callers.shutdownNow();
             }
         }
+    }
+
+    @Test
+    void aCredentialOfATypeTheAdapterDoesNotAcceptIsNotForwarded() {
+        var gateway = AdapterGateway.asGateway(GATEWAY, ServerTestSupport::editor, "Bearer shared-service-pat");
+        HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(baseUrl())
+                .endpoint(ENDPOINT)
+                .openConnectionOnStartup(false)
+                .httpRequestCustomizer((request, method, uri, body, context) -> {
+                    gateway.customize(request, method, uri, body, context);
+                    request.setHeader("X-MCP-Credential-Type", "service-account");
+                })
+                .build();
+        try (McpSyncClient client = McpClient.sync(transport).requestTimeout(Duration.ofSeconds(20)).build()) {
+            client.initialize();
+            McpSchema.CallToolResult result = call(client, "get_issue", Map.of("issue_key", "ABC-1"));
+
+            assertError(result, "internal_error");
+        }
+        assertThat(FOREIGN.calls()).isEmpty();
+        assertThat(FOREIGN.authorizations()).isEmpty();
     }
 
     private double divergences(String classified, String hints) {

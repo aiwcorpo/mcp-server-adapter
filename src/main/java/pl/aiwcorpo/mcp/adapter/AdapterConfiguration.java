@@ -83,7 +83,8 @@ class AdapterConfiguration {
     @Bean
     ToolCallbackProvider foreignToolCallbacks(ForeignTools tools, ForeignMcpClient client, AdapterProperties properties,
                                               McpPlatformProperties platform, ObjectProvider<MeterRegistry> meters) {
-        List<ToolCallback> callbacks = tools.callbacks(client, platform.system(), properties, meters.getIfAvailable());
+        List<ToolCallback> callbacks = tools.callbacks(client, platform.system(), platform.getManifest().getAcceptedCredentialTypes(),
+                properties, meters.getIfAvailable());
         return ToolCallbackProvider.from(callbacks);
     }
 
