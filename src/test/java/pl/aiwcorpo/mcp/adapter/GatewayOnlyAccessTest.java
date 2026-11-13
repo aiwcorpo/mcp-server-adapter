@@ -96,10 +96,14 @@ class GatewayOnlyAccessTest extends ServerTestSupport {
     }
 
     @Test
-    void onlyTheHealthEndpointAnswersWithoutJwt() throws Exception {
+    void onlyTheHealthEndpointAndTheManifestAnswerWithoutJwt() throws Exception {
         assertThat(get("/actuator/health").statusCode()).isEqualTo(200);
         assertThat(get("/actuator/prometheus").statusCode()).isEqualTo(401);
-        assertThat(get("/mcp-manifest").statusCode()).isEqualTo(401);
+        // Open by the platform's design (CC-249), which is why deploy/ limits the port to the gateway.
+        HttpResponse<String> manifest = get("/.well-known/mcp-manifest");
+        assertThat(manifest.statusCode()).isEqualTo(200);
+        assertThat(JSON.readTree(manifest.body()).path("serverId").asString()).isEqualTo(SERVER_ID);
+        assertThat(postTo("/.well-known/mcp-manifest", "{}", Map.of()).statusCode()).isEqualTo(401);
     }
 
     @Test
