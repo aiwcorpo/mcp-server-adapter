@@ -2,6 +2,7 @@ package pl.aiwcorpo.mcp.adapter.foreign;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import java.net.URI;
 import java.time.Duration;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.util.unit.DataSize;
 import pl.aiwcorpo.mcp.adapter.Fixtures;
@@ -199,6 +201,19 @@ class ForeignMcpClientTest {
 
         assertThat(result.at("/content/0/text").asString()).isEqualTo("done");
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(3));
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = StubForeignServer.DeleteAnswer.class, names = {"OPEN_FOR_EVER", "TRICKLE_FOR_EVER"})
+    void aSessionDeleteWhoseBodyNeverEndsDoesNotHoldTheCallOrTheToolList(StubForeignServer.DeleteAnswer answer) {
+        stub.deleteAnswer(answer).onCall(call -> Reply.text("done"));
+        ForeignMcpClient client = clientWithTimeout(Duration.ofSeconds(1));
+
+        JsonNode result = assertTimeoutPreemptively(Duration.ofSeconds(5),
+                () -> client.callTool("jira_get_issue", args(), "Token a", "r"));
+        assertThat(result.at("/content/0/text").asString()).isEqualTo("done");
+        assertThat(assertTimeoutPreemptively(Duration.ofSeconds(5), () -> client.listTools("Token discovery"))).isNotEmpty();
+        assertThat(stub.deletedSessions()).hasSize(2);
     }
 
     @Test
