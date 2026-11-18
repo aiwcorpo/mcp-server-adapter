@@ -44,13 +44,16 @@ public record AdapterProperties(@DefaultValue Foreign foreign, @DefaultValue Lim
      * @param enumValueMaxLength        longest text in an {@code enum} or {@code const}; longer or containing forbidden characters refuses the tool
      * @param schemaMaxNodes            most nodes of one written-out schema, against a schema that grows exponentially through shared references
      * @param resultMaxChars            the text of a result is cut to this length
+     * @param callsInFlight             most foreign calls at once; one call can hold some tens of MB of heap (the answer, its text and its
+     *                                  tree), so this times that stays well below the heap, and a call beyond it is refused as unavailable
      */
     public record Limits(@DefaultValue("4096") int stringMaxLength,
                          @DefaultValue Map<String, Integer> stringMaxLengthByProperty,
                          @DefaultValue("100") int arrayMaxItems, @DefaultValue("-2147483648") long numberMinimum,
                          @DefaultValue("2147483647") long numberMaximum, @DefaultValue("2000") int descriptionMaxLength,
                          @DefaultValue("1000") int propertyDescriptionMaxLength, @DefaultValue("256") int enumValueMaxLength,
-                         @DefaultValue("2000") int schemaMaxNodes, @DefaultValue("100000") int resultMaxChars) {
+                         @DefaultValue("2000") int schemaMaxNodes, @DefaultValue("100000") int resultMaxChars,
+                         @DefaultValue("8") int callsInFlight) {
     }
 
     /**

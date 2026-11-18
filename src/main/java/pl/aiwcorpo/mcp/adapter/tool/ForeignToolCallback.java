@@ -1,5 +1,6 @@
 package pl.aiwcorpo.mcp.adapter.tool;
 
+import java.util.concurrent.Semaphore;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import pl.aiwcorpo.mcp.adapter.foreign.ForeignCallException;
@@ -31,15 +32,17 @@ final class ForeignToolCallback implements ToolCallback, RiskClassifiedTool {
     private final ForeignResult results;
     private final ForeignFailures failures;
     private final ToolDefinition definition;
+    private final Semaphore inFlight;
 
     ForeignToolCallback(ForeignTool tool, ForeignMcpClient client, String system, String authorizationFormat,
-                        ForeignResult results, ForeignFailures failures) {
+                        ForeignResult results, ForeignFailures failures, Semaphore inFlight) {
         this.tool = tool;
         this.client = client;
         this.system = system;
         this.authorizationFormat = authorizationFormat;
         this.results = results;
         this.failures = failures;
+        this.inFlight = inFlight;
         this.definition = ToolDefinition.builder().name(tool.name()).description(tool.description())
                 .inputSchema(tool.inputSchema().toString()).build();
     }
@@ -53,6 +56,11 @@ final class ForeignToolCallback implements ToolCallback, RiskClassifiedTool {
     public String call(String toolInput) {
         BackendCredential credential = CredentialContext.require(system);
         String requestId = CallerContext.current().map(CallerContext::requestId).orElse(null);
+        if (!inFlight.tryAcquire()) {
+            ForeignCallException busy = new ForeignCallException(ForeignCallException.Kind.UNAVAILABLE, ForeignCallException.Reason.BUSY);
+            failures.record(tool.name(), requestId, busy);
+            throw busy;
+        }
         try {
             JsonNode result = client.callTool(tool.foreignName(), arguments(toolInput), authorization(credential), requestId);
             return results.render(result);
@@ -63,6 +71,8 @@ final class ForeignToolCallback implements ToolCallback, RiskClassifiedTool {
                 throw new CredentialRequiredException(system);
             }
             throw ex;
+        } finally {
+            inFlight.release();
         }
     }
 
