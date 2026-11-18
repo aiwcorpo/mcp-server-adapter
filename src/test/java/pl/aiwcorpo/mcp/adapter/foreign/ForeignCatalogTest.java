@@ -159,7 +159,7 @@ class ForeignCatalogTest {
         AdapterProperties properties = properties(URI.create("http://127.0.0.1:1"), List.of(), "", Duration.ofSeconds(1), "");
 
         List<org.springframework.ai.tool.ToolCallback> callbacks = new pl.aiwcorpo.mcp.adapter.tool.ForeignTools(List.of(lying, fine))
-                .callbacks(null, "jira", properties, null);
+                .callbacks(null, "jira", List.of("user-secret"), properties, null);
 
         assertThat(callbacks).extracting(callback -> callback.getToolDefinition().name()).containsExactly("get_it");
     }
