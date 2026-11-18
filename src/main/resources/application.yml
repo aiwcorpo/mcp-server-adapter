@@ -7,6 +7,13 @@
 server:
   port: ${MCP_PORT:8443}
   address: ${MCP_BIND:0.0.0.0}
+  # The starter reads a request body (up to internal-jwt.max-request-body) before it verifies the token, so threads.max times that
+  # limit is heap held by callers without a token; keep it well below the 576 MB heap of a 768m container.
+  tomcat:
+    threads:
+      max: 100
+    max-connections: 500
+    connection-timeout: 10s
 
 spring:
   application:
@@ -31,6 +38,8 @@ aiwcorpo:
         issuer: ${MCP_GATEWAY_ISSUER:https://mcp-gateway.internal}
         # The public key set of the gateway: https://<domain>/.well-known/mcp-jwks.json
         jwks-uri: ${MCP_GATEWAY_JWKS_URI:}
+        # Room for the largest tools/call (text arguments up to 32768 characters, see limits below) instead of the starter's 4 MB.
+        max-request-body: 1MB
       credential:
         connect-url: ${MCP_CONNECT_URL:}
       # Description of this server (GET /.well-known/mcp-manifest, C6, source: adapter, pulled by the gateway); the tool entries come from
