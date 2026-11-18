@@ -43,6 +43,14 @@
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <mcp-platform.version>4.0.0</mcp-platform.version>
+        <!-- The versions Spring Boot 4.1.2 manages, raised here because the parent must stay at the starter's 4.1.0; drop them when the
+             parent moves to 4.1.2 or newer. -->
+        <jackson-bom.version>3.1.7</jackson-bom.version>
+        <tomcat.version>11.0.27</tomcat.version>
+        <spring-framework.version>7.0.10</spring-framework.version>
+        <jackson-2-bom.version>2.21.7</jackson-2-bom.version>
+        <netty.version>4.2.19.Final</netty.version>
+        <log4j2.version>2.25.5</log4j2.version>
         <!-- The test against the real mcp-atlassian image needs a container and a fake Jira on the host: profile real-image, see README. -->
         <real.image.exclude>**/RealImage*</real.image.exclude>
     </properties>
@@ -56,6 +64,13 @@
                 <version>${mcp-platform.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <!-- Comes with cedar-java (through mcp-cedar-entities) and is not managed by Spring Boot; 33.5.0-jre has an advisory.
+                 Drop it when mcp-cedar-entities pins a fixed version. -->
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>33.7.2-jre</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
