@@ -6,7 +6,9 @@ The adapter of one third-party MCP server as a container. It runs on any host th
 
 - Docker Engine with Compose v2.20 or newer, 1 GiB of memory.
 - The domain of the platform, from its operator. This host must reach `https://<platform>` on port 443.
-- The platform must reach this host on port 8443.
+- The platform must reach this host on port 8443, and nothing else should: the manifest (`/.well-known/mcp-manifest`: server id, version and
+  every tool definition) is served there without a token. Limit the port to the gateway with the host firewall, or publish it on one
+  address with `MCP_PUBLISH_ADDRESS` in a `.env` file next to `compose.yaml`.
 - The address of the third-party server, on a network that only the adapter shares with it. It receives the credential of the calling user.
 - The address of the portal page for connecting an account.
 
@@ -51,7 +53,7 @@ The adapter generates its certificate on the first start and keeps it in the `st
 docker compose ps
 ```
 
-Expected: `mcp-adapter` is `healthy`. Every path except `/actuator/health` answers 401 without a token from the gateway.
+Expected: `mcp-adapter` is `healthy`. Every path except `/actuator/health` and `GET /.well-known/mcp-manifest` answers 401 without a token from the gateway.
 
 ## Add the server to the platform
 

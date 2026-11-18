@@ -30,11 +30,12 @@ services:
       - state:/var/lib/mcp/state
       # Only for your own certificate (MCP_TLS_CERT, MCP_TLS_KEY or MCP_TLS_KEYSTORE in mcp-adapter.env); the directory may stay empty.
       - ./certs:/certs:ro
-    # The gateway connects here, to the address the operator enters in the portal.
+    # The gateway connects here, to the address the operator enters in the portal. The manifest is served on this port without a token,
+    # so only the gateway should reach it: MCP_PUBLISH_ADDRESS in .env publishes it on one host address instead of all of them.
     ports:
-      - 8443:8443
+      - ${MCP_PUBLISH_ADDRESS:-0.0.0.0}:8443:8443
     healthcheck:
-      # An open port is the signal: the image has no HTTP client, and /actuator/health is the only path without a token.
+      # An open port is the signal: the image has no HTTP client.
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8443"]
       interval: 5s
       timeout: 3s

@@ -1,5 +1,5 @@
 # Base configuration is the production one: TLS on the server port (the author's own certificate, or one the starter generates
-# into MCP_STATE_DIR), the gateway's internal JWT on every path but the health check, the one-time jti in memory.
+# into MCP_STATE_DIR), the gateway's internal JWT on every path but the health check and GET of the manifest, the one-time jti in memory.
 # Everything that differs per environment comes from environment variables (README, "Configuration"); the starter reads
 # MCP_TLS_*, MCP_PLAIN_HTTP, MCP_STATE_DIR, MCP_REDIS_* and MCP_PAGING_CURSOR_KEY itself.
 # The 'dev' profile (tests, see application-dev.yml) only turns off TLS; the other development relaxations come from
