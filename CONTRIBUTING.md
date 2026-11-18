@@ -29,7 +29,9 @@ docker run -d --rm --name adapter-probe -p 127.0.0.1:18931:8000 \
 
 The image runs as user 10001:10001 on a glibc base (the native Cedar library does not work on musl) and listens on 8443. It writes
 only to `/var/lib/mcp/state` (a volume): the generated certificate and the cursor key. The release image is published as
-`ghcr.io/aiwcorpo/mcp-server-adapter:<version>` by `.github/workflows/release.yml`.
+`ghcr.io/aiwcorpo/mcp-server-adapter:<version>` by `.github/workflows/release.yml`. The workflow refuses a tag whose commit is not on
+`main` and a version already in the registry; who may push a tag and start the publish job is decided on GitHub: a tag ruleset on `v*`
+limited to the release maintainers, and required reviewers on the environment `release`.
 
 ## Running locally
 
