@@ -3,6 +3,8 @@ package pl.aiwcorpo.mcp.adapter;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import pl.aiwcorpo.mcp.adapter.schema.SchemaTightener;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -132,6 +134,56 @@ class SchemaTightenerTest {
         assertThat(schema.at("/properties/b").has("pattern")).isFalse();
         assertThat(schema.at("/properties/c").has("pattern")).isFalse();
         assertThat(schema.at("/properties/d/pattern").asString()).isEqualTo("^[a-z]+$");
+    }
+
+    @Test
+    void aPatternThatBacktracksOnRepeatedInputIsDroppedNotKept() {
+        ObjectNode schema = tighten("""
+                {"type":"object","properties":{"p":{"type":"string","pattern":"^(a+)+$"},"q":{"type":"string","pattern":"^(a|aa)+$"},
+                 "r":{"type":"string","pattern":"^(([a-z])+.)+[A-Z]([a-z])+$"},"s":{"type":"string","pattern":"^(.*a){12}$"},
+                 "t":{"type":"string","pattern":"^[A-Z][A-Z0-9_]+-\\\\d+(?:-\\\\d+)*$"},"u":{"type":"string","pattern":"^[a-z]+(?:-[a-z-]+)*$"},
+                 "v":{"type":"string","pattern":"^[0-9]+(?:.\\\\d+)*$"}}}""")
+                .schema().orElseThrow();
+
+        assertThat(schema.at("/properties/p").has("pattern")).isFalse();
+        assertThat(schema.at("/properties/q").has("pattern")).isFalse();
+        assertThat(schema.at("/properties/r").has("pattern")).isFalse();
+        assertThat(schema.at("/properties/s").has("pattern")).isFalse();
+        assertThat(schema.at("/properties/u").has("pattern")).isFalse();
+        assertThat(schema.at("/properties/v").has("pattern")).isFalse();
+        assertThat(schema.at("/properties/t/pattern").asString()).isEqualTo("^[A-Z][A-Z0-9_]+-\\d+(?:-\\d+)*$");
+    }
+
+    /**
+     * The separator-led repeated group is accepted only greedy and repeated with * or +, at most three of them, and checked absent and
+     * as S(?:S A)*. Patterns that are slow only through a neighbouring atom (^(?:-\d+)\d*$, ^(?:-\d+)*\d*$, ^a*(?:-\d+)*a*$ and others,
+     * see fixes L-08.md) pass mcp-manifest 7.0.0, which has no neighbour check; they are refused once the adapter uses a grammar with it.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"^(?:-\\d+){3}\\d*$", "^(?:-\\d+)?\\d*$", "^(?:-\\d+)*?$", "^(?:-\\d+)*+$", "^\\(?:-\\d+)*$",
+            "^a(?:-\\d+)*(?:-\\d+)*(?:-\\d+)*(?:-\\d+)*$", "^[a-z]+(?:-[a-z-]+)*$", "^[0-9]+(?:.\\d+)*$"})
+    void aRepeatedGroupOutsideTheSeparatorFormIsLeftToTheGrammarAndDropped(String pattern) {
+        assertThat(keeps(pattern)).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"^[A-Z][A-Z0-9_]+-\\d+(?:-\\d+)*$", "^[a-z]+(?:-[a-z]+)*(?:\\.[a-z]+)*$", "^\\d+(?:,\\d+)+$"})
+    void aSeparatorLedRepeatedGroupIsKept(String pattern) {
+        assertThat(keeps(pattern)).isTrue();
+    }
+
+    private boolean keeps(String pattern) {
+        return tighten(property(pattern)).at("/properties/p").has("pattern");
+    }
+
+    private ObjectNode tighten(ObjectNode schema) {
+        return tightener.tighten(schema).schema().orElseThrow();
+    }
+
+    private static ObjectNode property(String pattern) {
+        ObjectNode schema = (ObjectNode) Fixtures.tree("{\"type\":\"object\",\"properties\":{\"p\":{\"type\":\"string\"}}}");
+        ((ObjectNode) schema.at("/properties/p")).put("pattern", pattern);
+        return schema;
     }
 
     @Test
