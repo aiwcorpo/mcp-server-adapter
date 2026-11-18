@@ -61,8 +61,9 @@ MCP client -> gateway --TLS + internal JWT + X-MCP-Credential--> adapter --HTTP 
 
 ## Invariants to keep
 
-- Only the gateway can call the adapter: a request without the `mcp-gateway` certificate and a valid internal JWT gets `401`;
-  `/actuator/health` is the only path without a JWT.
+- Only the gateway can call the adapter: there is no client certificate (CC-249), the starter checks the gateway's internal JWT
+  against the public JWKS (`MCP_GATEWAY_JWKS_URI`) and a request without a valid one gets `401`. Without a JWT only the health
+  endpoints and `GET /.well-known/mcp-manifest` (the gateway pulls it) are served, as exact paths.
 - The user's credential reaches the server, never a shared one. The session lives for one call, redirects are not followed, and
   nothing the server answered is logged or copied into errors. The adapter holds no secret besides its TLS key.
 - Arguments outside the published schema are `invalid_argument`, without contacting the server.
