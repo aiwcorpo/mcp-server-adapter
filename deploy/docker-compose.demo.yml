@@ -4,7 +4,7 @@
 # that kind for good. The native mcp-jira container must not run at the same time.
 #
 # Variables: ADAPTER_IMAGE (mcp-server-adapter:<tag>) and MCP_GATEWAY_JWKS_URI (the public key set of the gateway). The adapter has no
-# policy settings: it has no policies and takes the policy data the gateway pushes without evaluating it (starter 4.0.0). It speaks plain http
+# policy settings: it has no policies and takes the policy data the gateway pushes without evaluating it (starter 4.1.0). It speaks plain http
 # on the private network of the stack, so the server is added in the gateway with allowPlainHttp (CC-249), and it needs no certificate, no
 # Redis and no registry channel: the gateway pulls its manifest (source: adapter). Nothing in this file is a secret: JIRA_PERSONAL_TOKEN is a
 # placeholder the foreign server never uses.
