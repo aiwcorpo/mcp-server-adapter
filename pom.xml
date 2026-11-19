@@ -11,7 +11,7 @@
 
     <groupId>pl.aiwcorpo.mcp.adapter</groupId>
     <artifactId>mcp-server-adapter</artifactId>
-    <version>2.0.0</version>
+    <version>2.1.0</version>
     <packaging>jar</packaging>
     <name>mcp-server-adapter</name>
     <description>Sidecar that puts a foreign MCP server behind the platform gateway.</description>
@@ -42,7 +42,7 @@
         <java.version>25</java.version>
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <mcp-platform.version>4.0.0</mcp-platform.version>
+        <mcp-platform.version>4.1.0</mcp-platform.version>
         <!-- The versions Spring Boot 4.1.2 manages, raised here because the parent must stay at the starter's 4.1.0; drop them when the
              parent moves to 4.1.2 or newer. -->
         <jackson-bom.version>3.1.7</jackson-bom.version>

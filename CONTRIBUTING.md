@@ -7,7 +7,7 @@ repository and needs approval before it is implemented here.
 ## Setup
 
 JDK 25. The tests need no container runtime: the third-party server is a stub inside the test JVM. The platform artifacts
-(`mcp-platform-starter` 4.0.0, `mcp-contracts` 7.0.0) come from Maven Central, or must already be in `~/.m2`.
+(`mcp-platform-starter` 4.1.0, `mcp-contracts` 7.2.0) come from Maven Central, or must already be in `~/.m2`.
 
 ```bash
 ./mvnw -B verify                        # tests and target/mcp-server-adapter.jar; the same command runs in CI
@@ -37,7 +37,7 @@ limited to the release maintainers, and required reviewers on the environment `r
 
 `.run/` has two IntelliJ configurations. Start the third-party server first with the `docker run` above, but on port 18931 and with
 `JIRA_URL=http://localhost:18081`; the image must already be in your local Docker (the startup waits up to 90 s). Then start
-`LocalGateway` (the gateway of `mcp-platform-test` 4.0.0 on `http://127.0.0.1:18500/mcp`; needs the artifact in `~/.m2`, from
+`LocalGateway` (the gateway of `mcp-platform-test` 4.1.0 on `http://127.0.0.1:18500/mcp`; needs the artifact in `~/.m2`, from
 `./mvnw verify` of the starter) and `McpServerAdapter (dev, behind LocalGateway)`. `tools/list` works with any
 `Authorization: Bearer <token>`. `tools/call` answers `unauthenticated`: LocalGateway signs no `mcp_risk` and `mcp_action`, which an
 adapter requires, so calls need a real gateway. Stop the server with `docker stop adapter-foreign-dev`.

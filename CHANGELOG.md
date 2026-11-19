@@ -2,6 +2,19 @@
 
 Format: SemVer versions, newest first.
 
+## 2.1.0
+
+Hardening release: limits on request size, calls in flight and answer size, stricter checks of foreign schemas and credentials. Built on `mcp-platform-starter` 4.1.0 and `mcp-contracts` 7.2.0.
+
+- Cap the request body at 1 MB and the request threads at 100 (#5).
+- Bound foreign calls in flight and foreign answer tokens (#6).
+- Close the session DELETE's body as soon as its status arrives (#9).
+- Keep a foreign schema pattern only when it matches in linear time (#12).
+- Refuse a credential whose type the adapter does not accept (#11).
+- Raise Jackson 3.1.7, Tomcat 11.0.27, Spring 7.0.10 (#10).
+- Document the manifest open path and publishing the port on one address (#8); `deploy/compose.yaml` pins image tag 2.1.0.
+- The release workflow refuses a tag that is off main or whose version already exists (#7); the image stage checks its branch before entering its agent (#4).
+
 ## 2.0.0
 
 Major release: no list of systems, no policy settings. Built on `mcp-platform-starter` 4.0.0 and `mcp-contracts` 7.0.0 (CC-229 ... CC-241).
