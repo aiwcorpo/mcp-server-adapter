@@ -18,7 +18,9 @@ import tools.jackson.databind.JsonNode;
 
 /**
  * Contracts 8.0.0 at the sidecar: the foreign server declares resources, prompts, completions and logging (D7: the adapter exposes none of
- * them until an administrator classifies foreign resources, and never prompts), and the principal an agent or a delegated call carries reaches the audit event. Which AI client may call is decided by the gateway: the sidecar takes no policy decisions.
+ * them until an administrator classifies foreign resources, and never prompts), and the principal an agent or a delegated call carries reaches the audit event. The sidecar checks neither
+ * {@code allowedClients} nor {@code allowedAgentClients}: in adapter receiver mode the starter keeps only the revision of the policy data and builds no
+ * ResourcePolicy, so the gateway is the only gate on the AI client.
  */
 class ToolsOnlyAndAgentsTest extends ServerTestSupport {
 
@@ -100,14 +102,14 @@ class ToolsOnlyAndAgentsTest extends ServerTestSupport {
         String session = session();
 
         List<JsonNode> agent = audit(() -> sendQuietly(classified(GATEWAY.user().client(AGENT_CLIENT)
-                .username("service-account-agent-reports").extraClaim("pty", "agent")), session));
+                .extraClaim("pty", "agent")), session));
         assertThat(FOREIGN.calls()).hasSize(1);
         JsonNode agentCall = toolCall(agent);
         assertThat(agentCall.path("principalType").asString()).isEqualTo("agent");
         assertThat(agentCall.has("actorSub")).isFalse();
         assertThat(agentCall.has("actorClient")).isFalse();
 
-        List<JsonNode> delegated = audit(() -> sendQuietly(classified(GATEWAY.user().client("claude-code")
+        List<JsonNode> delegated = audit(() -> sendQuietly(classified(GATEWAY.user().client(AGENT_CLIENT)
                 .extraClaim("pty", "delegated").extraClaim("act", Map.of("sub", AGENT_SUB, "azp", AGENT_CLIENT))), session));
         JsonNode delegatedCall = toolCall(delegated);
         assertThat(delegatedCall.path("principalType").asString()).isEqualTo("delegated");
@@ -116,6 +118,20 @@ class ToolsOnlyAndAgentsTest extends ServerTestSupport {
 
         List<JsonNode> human = audit(() -> sendQuietly(classified(GATEWAY.user()), session));
         assertThat(toolCall(human).has("principalType")).as("a human has no principalType in the audit event").isFalse();
+    }
+
+    @Test
+    void trustModelTheSidecarDoesNotCheckTheAiClientSoAnAgentFromNoListReachesTheForeignServer() throws Exception {
+        GATEWAY.policyData().allowedClients("claude-code").allowedAgentClients().push();
+        try {
+            HttpResponse<String> call = post(GET_ISSUE, withCredential(classified(GATEWAY.user().client("unlisted-agent")
+                    .extraClaim("pty", "agent")).mint().headers()), session());
+
+            assertThat(call.body()).contains("\"result\"").doesNotContain("access_denied");
+            assertThat(FOREIGN.calls()).as("if the starter starts checking clients in adapter mode, this test is the one to revisit").hasSize(1);
+        } finally {
+            GATEWAY.policyData().allowedClients("claude-code", "claude-ai", "local-gateway").push();
+        }
     }
 
     @Test

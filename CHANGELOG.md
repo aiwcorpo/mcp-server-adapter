@@ -12,8 +12,9 @@ approved manifest says `contractsVersion` 8.0.0 (the manifest of the adapter now
 - The manifest carries `contractsVersion: "8.0.0"`.
 - Prompts of the foreign server are never exposed and resources only after classification (D7, not part of this round): the starter answers `resources/*`, `prompts/*`,
   `completion/*` and `logging/*` with -32601 and no longer declares `logging`, whatever the foreign server declares. The manifest of an adapter may not carry prompts (schema, `maxItems: 0`).
-- Agent and delegated calls (`pty`, `act`) pass the token check and appear in the audit event as `principalType`, `actorSub` and `actorClient`; the adapter takes no policy decision, so the
-  check of the AI client against `allowedAgentClients` stays with the gateway.
+- Agent and delegated calls (`pty`, `act`) pass the token check and appear in the audit event as `principalType`, `actorSub` and `actorClient`; the sidecar checks neither `allowedClients`
+  (humans, unchanged since starter 4.0) nor `allowedAgentClients`: in adapter receiver mode the starter's `AdapterPolicyDataEndpoint` keeps only the revision and
+  `ResourcePolicy` is not built, so the gateway is the only gate on the AI client.
 - `LocalGateway` and the docs refer to `mcp-platform-test` 5.0.0.
 
 ## 2.1.0
