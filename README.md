@@ -23,6 +23,7 @@ Then the platform operator adds `https://<this host>:8443/mcp` in the portal. Fu
 - The server gets the credential of the calling user, never a shared one. Keep it on a network that only the adapter shares with it.
 - Tools whose input schema cannot be bounded (open maps, unions of two types, recursion, lists without `items`, depth above 8) are skipped. The log line `event=foreign_tool_skipped` gives the reason.
 - Every error of the server reaches the model as `not_found_or_denied`, except `credential_required` (HTTP 401) and `upstream_unavailable`. Check how the server reports errors first: an error returned as ordinary text reaches the model unchanged.
+- Only tools are exposed. Prompts of the third-party server are never passed on, and its resources stay closed until an administrator can classify them (not possible yet); a foreign server that declares either is served as if it had tools only, and the adapter answers `resources/*`, `prompts/*`, `completion/*` and `logging/*` with -32601.
 - A change in the tool list needs a restart of the adapter. The gateway pulls the new manifest within a minute and the changed tools wait for classification again.
 
 ## Configuration
