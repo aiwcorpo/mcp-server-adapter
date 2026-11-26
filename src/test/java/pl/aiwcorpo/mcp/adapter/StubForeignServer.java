@@ -62,7 +62,9 @@ public final class StubForeignServer implements AutoCloseable {
     private final List<Call> calls = new CopyOnWriteArrayList<>();
     private final List<String> authorizations = new CopyOnWriteArrayList<>();
     private final List<String> deletes = new CopyOnWriteArrayList<>();
+    private final List<String> unexpectedMethods = new CopyOnWriteArrayList<>();
     private final AtomicInteger sessions = new AtomicInteger();
+    private volatile boolean advertisePrimitives;
     private volatile List<ObjectNode> tools = List.of();
     private volatile boolean eventStream = true;
     private volatile boolean requireAuthorization = true;
@@ -104,6 +106,15 @@ public final class StubForeignServer implements AutoCloseable {
 
     public StubForeignServer tools(List<ObjectNode> tools) {
         this.tools = tools;
+        return this;
+    }
+
+    /**
+     * Makes {@code initialize} declare resources, prompts, completions and logging next to tools, the way a server with more than
+     * tools does. Survives {@link #reset()}: it describes the server, not one test.
+     */
+    public StubForeignServer advertisePrimitives(boolean value) {
+        this.advertisePrimitives = value;
         return this;
     }
 
@@ -151,6 +162,11 @@ public final class StubForeignServer implements AutoCloseable {
         return List.copyOf(authorizations);
     }
 
+    /** Methods the adapter sent that the stub does not serve: anything beyond initialize, tools/list and tools/call. */
+    public List<String> unexpectedMethods() {
+        return List.copyOf(unexpectedMethods);
+    }
+
     public List<String> deletedSessions() {
         return List.copyOf(deletes);
     }
@@ -159,6 +175,7 @@ public final class StubForeignServer implements AutoCloseable {
         calls.clear();
         authorizations.clear();
         deletes.clear();
+        unexpectedMethods.clear();
         handler = call -> Reply.text("ok");
         redirectTo = null;
         stream = Stream.NORMAL;
@@ -192,7 +209,14 @@ public final class StubForeignServer implements AutoCloseable {
                             sessionIdToSend != null ? sessionIdToSend : "stub-session-" + sessions.incrementAndGet());
                     ObjectNode result = JSON.createObjectNode();
                     result.put("protocolVersion", "2025-06-18");
-                    result.putObject("capabilities").putObject("tools");
+                    ObjectNode capabilities = result.putObject("capabilities");
+                    capabilities.putObject("tools");
+                    if (advertisePrimitives) {
+                        capabilities.putObject("resources");
+                        capabilities.putObject("prompts");
+                        capabilities.putObject("completions");
+                        capabilities.putObject("logging");
+                    }
                     result.putObject("serverInfo").put("name", "stub").put("version", "1");
                     respond(exchange, request, result.toString());
                 }
@@ -203,7 +227,10 @@ public final class StubForeignServer implements AutoCloseable {
                     respond(exchange, request, result.toString());
                 }
                 case "tools/call" -> call(exchange, request, authorization);
-                default -> send(exchange, 400, "application/json", "{}");
+                default -> {
+                    unexpectedMethods.add(method);
+                    send(exchange, 400, "application/json", "{}");
+                }
             }
         }
     }

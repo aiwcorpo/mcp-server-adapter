@@ -42,7 +42,7 @@ abstract class ServerTestSupport {
     static final JsonMapper JSON = JsonMapper.builder().build();
 
     static final TestGateway GATEWAY = TestGateway.start(SERVER_ID);
-    static final StubForeignServer FOREIGN = new StubForeignServer().tools(Fixtures.atlassianTools());
+    static final StubForeignServer FOREIGN = new StubForeignServer().tools(Fixtures.atlassianTools()).advertisePrimitives(true);
 
     @DynamicPropertySource
     static void environment(DynamicPropertyRegistry registry) {

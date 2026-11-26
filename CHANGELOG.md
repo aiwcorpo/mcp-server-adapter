@@ -2,6 +2,21 @@
 
 Format: SemVer versions, newest first.
 
+## Unreleased
+
+Receiver of `mcp-contracts` 8.0.0 (CC-258 ... CC-266), built on `mcp-platform-starter` 5.0.0. Step 3 of the CC-260 rollout: roll the adapter after the gateway
+that understands 8.0.0 and before emission of the new claims is switched on; the gateway sends `resource`, `pty`, `act` and `allowedAgentClients` only once the
+approved manifest says `contractsVersion` 8.0.0 (the manifest of the adapter now does), and the manifest hash of no tool changes.
+
+- Bump `mcp-platform.version` to 5.0.0. The adapter uses none of the public types that changed (`CallerContext`, `PolicyData`, `RequestBinding`), so no source change was needed.
+- The manifest carries `contractsVersion: "8.0.0"`.
+- Prompts of the foreign server are never exposed and resources only after classification (D7, not part of this round): the starter answers `resources/*`, `prompts/*`,
+  `completion/*` and `logging/*` with -32601 and no longer declares `logging`, whatever the foreign server declares. The manifest of an adapter may not carry prompts (schema, `maxItems: 0`).
+- Agent and delegated calls (`pty`, `act`) pass the token check and appear in the audit event as `principalType`, `actorSub` and `actorClient`; the sidecar checks neither `allowedClients`
+  (humans, unchanged since starter 4.0) nor `allowedAgentClients`: in adapter receiver mode the starter's `AdapterPolicyDataEndpoint` keeps only the revision and
+  `ResourcePolicy` is not built, so the gateway is the only gate on the AI client.
+- `LocalGateway` and the docs refer to `mcp-platform-test` 5.0.0.
+
 ## 2.1.0
 
 Hardening release: limits on request size, calls in flight and answer size, stricter checks of foreign schemas and credentials. Built on `mcp-platform-starter` 4.1.0 and `mcp-contracts` 7.2.0.

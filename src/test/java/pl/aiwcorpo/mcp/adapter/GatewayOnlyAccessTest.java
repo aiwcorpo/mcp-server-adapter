@@ -111,7 +111,7 @@ class GatewayOnlyAccessTest extends ServerTestSupport {
         try (Socket socket = new Socket("127.0.0.1", port)) {
             socket.setSoTimeout(2000);
             OutputStream out = socket.getOutputStream();
-            // Starter 4.1.0 verifies the token before it looks at the announced length, so the token must be a valid one.
+            // The starter verifies the token before it looks at the announced length, so the token must be a valid one.
             String authorization = GATEWAY.user().mint().headers().get("Authorization");
             out.write(("POST " + ENDPOINT + " HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: " + authorization + "\r\n"
                     + "Content-Type: application/json\r\nContent-Length: 2097152\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
